@@ -27,10 +27,12 @@ and term =
   |TApp of term * term
   |TIf of term * term * term
   |TLet of string * term * term
-  |TLetrec of string * string * term * term * term
+  |TLetrec of string * string list * term * term * term
   |TPair of term * term * term
   |TFst of term
   |TSnd of term
+  |THd of term
+  |TTl of term
   |TNil of term
   |TCons of term * term * term
   |TRef of term * term

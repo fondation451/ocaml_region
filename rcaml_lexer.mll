@@ -19,6 +19,8 @@
       "rec", REC;
       "fst", FST;
       "snd", SND;
+      "hd", HD;
+      "tl", TL;
       "Nil", NIL;
       "Cons", CONS;
       "ref", REF;
@@ -84,6 +86,13 @@ rule token = parse
   |'/' { DIV }
   |"&&" { AND }
   |"||" { OR }
+  |"(*" {comment_block lexbuf}
   |eof {EOF}
   |_
     { raise (Lexing_error (lexeme lexbuf)) }
+
+and comment_block = parse
+  |"*)" { token lexbuf }
+  |'\n' { newline lexbuf; comment_block lexbuf }
+  |_ { comment_block lexbuf }
+  |eof { raise (Lexing_error("Unfinished comment !\n")) }

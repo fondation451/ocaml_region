@@ -11,7 +11,7 @@
 
 
 %token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN
-%token TRUE FALSE COMA AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT
+%token TRUE FALSE COMA AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL
 %token PLUS MINUS TIMES DIV MOD NOT AND OR
 %token LT GT LE GE NOT_EQUAL
 %token EOF
@@ -20,7 +20,7 @@
 
 %left struct_prec
 %left INTEGER IDENT TRUE FALSE
-%left FST SND
+%left FST SND HD TL
 %left AFFECT
 %left OR
 %left AND
@@ -42,35 +42,56 @@
 %%
 
 entry:
-  t = term EOF { t }
+  t = any_term EOF { t }
 ;
 
-term:
-  |FUN id = IDENT ARROW t_body = term AT t_rgn = term { TFun(id, t_body, t_rgn) }
-  |t1 = term t2 = term { TApp(t1, t2) }
-  |IF t_cond = term THEN t_then = term ELSE t_else = term %prec struct_prec { TIf(t_cond, t_then, t_else) }
-  |LET id = IDENT EQUAL t1 = term IN t2 = term { TLet(id, t1, t2) }
-  |LET REC id_f = IDENT id_x = IDENT EQUAL t1 = term AT t_rgn = term IN t2 = term { TLetrec(id_f, id_x, t1, t_rgn, t2) }
-  |LPAR t1 = term COMA t2 = term RPAR AT t_rgn = term { TPair(t1, t2, t_rgn) }
-  |FST t = term { TFst(t) }
-  |SND t = term { TSnd(t) }
-  |NIL AT t_rgn = term { TNil(t_rgn) }
-  |CONS t1 = term t2 = term AT t_rgn = term { TCons(t1, t2, t_rgn) }
-  |REF t = term AT t_rgn = term { TRef(t, t_rgn) }
-  |t_left = term AFFECT t_right = term { TAssign(t_left, t_right) }
-  |DEREF t = term { TDeref(t) }
-  |NEWRGN LPAR RPAR { TNewrgn }
-  |ALIASRGN t_rgn = term AT t = term { TAliasrgn(t_rgn, t) }
-  |FREERGN t_rgn = term { TFreergn(t_rgn) }
-  |t1 = term operator = binop t2 = term { TBinop(operator, t1, t2) }
-  |t1 = term comp_operator = comp_op t2 = term { TComp(comp_operator, t1, t2) }
-  |MINUS t = term %prec uminus { TNeg(t) }
-  |NOT t = term { TNot(t) }
+atomic_term:
+  |LPAR t = any_term RPAR { t }
+  |i = INTEGER { TInt(i) }
+  |id = IDENT { TVar(id) }
   |UNIT { TUnit }
   |TRUE { TBool(true) }
   |FALSE { TBool(false) }
-  |i = INTEGER { TInt(i) }
-  |id = IDENT { TVar(id) }
+  |LPAR t1 = atomic_term COMA t2 = atomic_term RPAR AT t_rgn = atomic_term { TPair(t1, t2, t_rgn) }
+  |NIL AT t_rgn = atomic_term { TNil(t_rgn) }
+  |CONS t1 = atomic_term t2 = atomic_term AT t_rgn = atomic_term { TCons(t1, t2, t_rgn) }
+  |DEREF t = atomic_term { TDeref(t) }
+;
+
+application_term:
+  |t = atomic_term { t }
+  |t1 = application_term t2 = application_term { TApp(t1, t2) }
+  |t_left = application_term AFFECT t_right = application_term { TAssign(t_left, t_right) }
+  |REF t = application_term AT t_rgn = application_term { TRef(t, t_rgn) }
+  |FST t = application_term { TFst(t) }
+  |SND t = application_term { TSnd(t) }
+  |HD t = application_term { THd(t) }
+  |TL t = application_term { TTl(t) }
+  |NEWRGN UNIT { TNewrgn }
+  |ALIASRGN t_rgn = application_term AT t = application_term { TAliasrgn(t_rgn, t) }
+  |FREERGN t_rgn = application_term { TFreergn(t_rgn) }
+;
+
+%inline op_term:
+  |t = application_term { t }
+  |t1 = application_term operator = binop t2 = application_term { TBinop(operator, t1, t2) }
+  |t1 = application_term comp_operator = comp_op t2 = application_term { TComp(comp_operator, t1, t2) }
+  |MINUS t = application_term %prec uminus { TNeg(t) }
+  |NOT t = application_term { TNot(t) }
+;
+
+statement_term:
+  |t = op_term { t }
+  |IF t_cond = statement_term THEN t_then = statement_term ELSE t_else = statement_term %prec struct_prec
+    { TIf(t_cond, t_then, t_else) }
+;
+
+any_term:
+  |t = statement_term { t }
+  |FUN id = IDENT ARROW t_body = any_term AT t_rgn = any_term { TFun(id, t_body, t_rgn) }
+  |LET id = IDENT EQUAL t1 = any_term IN t2 = any_term { TLet(id, t1, t2) }
+  |LET REC id_f = IDENT id_x_l = nonempty_list(IDENT) EQUAL t1 = any_term AT t_rgn = any_term IN t2 = any_term
+    { TLetrec(id_f, id_x_l, t1, t_rgn, t2) }
 ;
 
 %inline binop:
