@@ -1,0 +1,7 @@
+# Compiled source
+_build/
+rcaml
+*.native
+
+# VIM files
+*.swp
