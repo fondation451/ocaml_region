@@ -2,6 +2,7 @@
 
 open Printf
 open Lexing
+open Util
 
 let parse_only = ref false
 let verbose = ref false
@@ -41,7 +42,9 @@ let () =
     Printf.printf "(********** RCAML **********)\n%s\n\n" (Ast.show_term prog);
 
     let typed_prog = Typing.type_term prog in
-    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term typed_prog)
+    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term typed_prog);
+
+    ()
 
   with
   |Lexer.Lexing_error(str) ->
