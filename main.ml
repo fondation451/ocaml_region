@@ -37,18 +37,24 @@ let () =
 
   try
 
-    let prog = Rcaml_parser.entry Rcaml_lexer.token buf in
-    Printf.printf "(********** RCAML **********)\n%s\n\n" (Rcaml_ast.show_term prog)
+    let prog = Parser.entry Lexer.token buf in
+    Printf.printf "(********** RCAML **********)\n%s\n\n" (Ast.show_term prog);
+
+    let typed_prog = Typing.type_term prog in
+    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term typed_prog)
 
   with
-  |Rcaml_lexer.Lexing_error(str) ->
+  |Lexer.Lexing_error(str) ->
     report_loc (lexeme_start_p buf, lexeme_end_p buf);
     eprintf "Lexing error : %s\n@." str;
     exit 1
-  |Rcaml_parser.Error ->
+  |Parser.Error ->
     report_loc (lexeme_start_p buf, lexeme_end_p buf);
     eprintf "Syntax error\n@.";
     exit 1
-  |_ ->
-    eprintf "Compilation error\n@.";
+  |Type.Type_Error(str) ->
+    eprintf "Typing error : %s\n@." str;
+    exit 1
+(*  |_ ->
+    eprintf "Compilation error\n@.";*)
 

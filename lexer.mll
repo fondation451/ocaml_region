@@ -3,7 +3,8 @@
 {
 
   open Lexing
-  open Rcaml_parser
+  open Util
+  open Parser
 
   exception Lexing_error of string
 
