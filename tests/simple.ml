@@ -5,10 +5,10 @@
 
 *)
 
-let rgn1 = newrgn () in
+let r1 = newrgn () in
 
-let rec g x = x @ rgn1 in
+let rec g x r = (x, x) @ r @ r1 in
 
-let rec f x = g x @ rgn1 in
+let rec f x r = g x r @ r1 in
 
-f 4
+snd (f (4, 4) @ r1 r1)

@@ -76,15 +76,22 @@ let rec mgu mty1 mty2 =
     let s2 = mgu (apply_m s1 mty2) (apply_m s1 mty2') in
     compose_subs s1 s2
   |T.TList(mty1, _), T.TList(mty1', _) |T.TRef(mty1, _), T.TRef(mty1', _) -> mgu mty1 mty1'
-  |_ -> raise (T.Type_Error("Mgu"))
+  |_ -> raise (T.Type_Error(Printf.sprintf "Mgu %s %s" (T.show_rcaml_type mty1) (T.show_rcaml_type mty2)))
 
 let mty_of (T.TPoly(_, mty)) = mty
 
 let to_poly mty = T.TPoly([], mty)
 
+let get_rgn mty =
+  match mty with
+  |T.THnd(r) -> r
+  |_ -> mk_rgn ()
+
+
 (***********)
 
 let rec type_infer env t =
+  Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term t);
   match t with
   |S.Var(var) -> begin
     try
@@ -117,17 +124,29 @@ let rec type_infer env t =
     let s2, t2' = type_infer (apply_env s1 env) t2 in
     let mty1 = mty_of (T.get_type t1') in
     let mty2 = mty_of (T.get_type t2') in
-    let s3 = mgu (apply_m s1 mty1) T.TBool in
-    let s4 = mgu (apply_m s2 mty2) T.TBool in
-    compose_subs s1 (compose_subs s2 (compose_subs s3 s4)), T.mk_term (T.Comp(c, t1', t2')) (generalize env T.TBool)
+    let s = compose_subs s1 s2 in
+    let s =
+      match c with
+      |T.Ceq |T.Cneq ->
+        let s3 = mgu (apply_m s mty1) (apply_m s mty2) in
+        compose_subs s3 s
+      |_ ->
+        let s3 = mgu (apply_m s1 mty1) T.TBool in
+        let s4 = mgu (apply_m s2 mty2) T.TBool in
+        compose_subs s4 (compose_subs s3 s)
+    in
+    s, T.mk_term (T.Comp(c, t1', t2')) (generalize env T.TBool)
   |S.Fun(x_l, t1, t2) ->
     let a_l = List.rev_map (fun _ -> T.TAlpha(mk_var ())) x_l in
     let env' = List.fold_left2 (fun env x mty -> StrMap.add x (T.TPoly([], mty)) env) env x_l a_l in
     let s1, t1' = type_infer env' t1 in
     let s2, t2' = type_infer (apply_env s1 env') t2 in
     let mty1 = mty_of (T.get_type t1') in
-    let s = compose_subs s1 s2 in
-    s, T.mk_term (T.Fun(x_l, t1', t2')) (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l, mty1, "DUMB REGION")))
+    let mty2 = mty_of (T.get_type t2') in
+    let r = get_rgn mty2 in
+    let s3 = mgu (apply_m s2 mty2) (T.THnd(r)) in
+    let s = compose_subs s3 (compose_subs s1 s2) in
+    s, T.mk_term (T.Fun(x_l, t1', t2')) (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l, mty1, r)))
   |S.App(t1, t2_l) ->
     let mty = T.TAlpha(mk_var ()) in
     let s1, t1' = type_infer env t1 in
@@ -142,7 +161,7 @@ let rec type_infer env t =
     in
     let t2_l' = List.rev t2_l' in
     let ty_t2_l = List.map (fun t -> mty_of (T.get_type t)) t2_l' in
-    let s3 = mgu (apply_m s2 mty1) (T.TFun(ty_t2_l, mty, mk_var ())) in
+    let s3 = mgu (apply_m s2 mty1) (T.TFun(ty_t2_l, mty, mk_rgn ())) in
     compose_subs s3 (compose_subs s2 s1), T.mk_term (T.App(t1', t2_l')) (generalize env (apply_m s3 mty))
   |S.If(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
@@ -170,13 +189,72 @@ let rec type_infer env t =
     let env'' = StrMap.add f (generalize (apply_env s1 env') mty1) env' in
     let s2, t2' = type_infer (apply_env s1 env'') t2 in
     compose_subs s1 s2, T.mk_term (T.Letrec(f, t1', t2')) (T.get_type t2')
-  |S.Pair(t1, t2, t3) -> assert false
-  |S.Fst(t1) -> assert false
-  |S.Snd(t1) -> assert false
-  |S.Hd(t1) -> assert false
-  |S.Tl(t1) -> assert false
-  |S.Nil(t1) -> assert false
-  |S.Cons(t1, t2, t3) -> assert false
+  |S.Pair(t1, t2, t3) ->
+    let s1, t1' = type_infer env t1 in
+    let env = apply_env s1 env in
+    let s2, t2' = type_infer env t2 in
+    let env = apply_env s2 env in
+    let s3, t3' = type_infer env t3 in
+    let mty1 = mty_of (T.get_type t1') in
+    let mty2 = mty_of (T.get_type t2') in
+    let mty3 = mty_of (T.get_type t3') in
+    let r = get_rgn mty3 in
+    let s = compose_subs s3 (compose_subs s2 s1) in
+    let s4 = mgu (apply_m s mty3) (T.THnd(r)) in
+    let s = compose_subs s4 s in
+    s, T.mk_term (T.Pair(t1', t2', t3')) (generalize env (T.TCouple(mty1, mty2, r)))
+  |S.Fst(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let a1 = T.TAlpha(mk_var ()) in
+    let a2 = T.TAlpha(mk_var ()) in
+    let s2 = mgu (apply_m s1 mty1) (T.TCouple(a1, a2, mk_rgn ())) in
+    let s = compose_subs s1 s2 in
+    s, T.mk_term (T.Fst(t1')) (generalize env (apply_m s a1))
+  |S.Snd(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let a1 = T.TAlpha(mk_var ()) in
+    let a2 = T.TAlpha(mk_var ()) in
+    let s2 = mgu (apply_m s1 mty1) (T.TCouple(a1, a2, mk_rgn ())) in
+    let s = compose_subs s1 s2 in
+    s, T.mk_term (T.Snd(t1')) (generalize env (apply_m s a2))
+  |S.Hd(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let a1 = T.TAlpha(mk_var ()) in
+    let s2 = mgu (apply_m s1 mty1) (T.TList(a1, mk_rgn ())) in
+    let s = compose_subs s1 s2 in
+    s, T.mk_term (T.Hd(t1')) (generalize env (apply_m s a1))
+  |S.Tl(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let a1 = T.TAlpha(mk_var ()) in
+    let s2 = mgu (apply_m s1 mty1) (T.TList(a1, mk_rgn ())) in
+    let s = compose_subs s1 s2 in
+    s, T.mk_term (T.Tl(t1')) (generalize env (apply_m s mty1))
+  |S.Nil(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let r = get_rgn mty1 in
+    let s2 = mgu (apply_m s1 mty1) (T.THnd(r)) in
+    let s = compose_subs s1 s2 in
+    s, T.mk_term (T.Nil(t1')) (generalize env (T.TList(T.TAlpha(mk_var ()), r)))
+  |S.Cons(t1, t2, t3) ->
+    let s1, t1' = type_infer env t1 in
+    let env = apply_env s1 env in
+    let s2, t2' = type_infer env t2 in
+    let env  = apply_env s2 env in
+    let s3, t3' = type_infer env t3 in
+    let mty1 = mty_of (T.get_type t1') in
+    let mty2 = mty_of (T.get_type t2') in
+    let mty3 = mty_of (T.get_type t3') in
+    let r = get_rgn mty3 in
+    let s = compose_subs s3 (compose_subs s2 s1) in
+    let s4 = mgu (apply_m s mty2) (T.TList(mty1, mk_rgn ())) in
+    let s5 = mgu (apply_m s mty3) (T.THnd(r)) in
+    let s = compose_subs s5 (compose_subs s4 s) in
+    s, T.mk_term (T.Cons(t1', t2', t3')) (generalize env (apply_m s (T.TList(apply_m s mty1, r))))
   |S.Ref(t1, t2) -> assert false
   |S.Assign(t1, t2) -> assert false
   |S.Deref(t1) -> assert false

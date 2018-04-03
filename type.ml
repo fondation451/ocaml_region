@@ -17,9 +17,19 @@ and rcaml_type_poly =
 
 and regions = string
 
-and binop = Ast.binop
+and binop = Ast.binop =
+  |Op_add
+  |Op_sub
+  |Op_mul
+  |Op_div
+  |Op_mod
+  |Op_and
+  |Op_or
 
-and comp = Ast.comp
+and comp = Ast.comp =
+  |Ceq |Cneq
+  |Clt |Cgt
+  |Cle |Cge
 
 and term =
   |Unit
