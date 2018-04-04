@@ -68,6 +68,7 @@ rule token = parse
     }
   |ident as str_id {try Hashtbl.find kwds str_id with Not_found -> IDENT(str_id)}
   |',' { COMA }
+  |';' { SEMICOLON }
   |'@' { AT }
   |"->" { ARROW }
   |'=' { EQUAL }

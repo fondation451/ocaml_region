@@ -41,5 +41,6 @@ and term =
   |Newrgn
   |Aliasrgn of term * term
   |Freergn of term
+  |Sequence of term * term
 
 [@@deriving show { with_path = false }]

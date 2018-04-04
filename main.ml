@@ -41,7 +41,7 @@ let () =
     let prog = Parser.entry Lexer.token buf in
     Printf.printf "(********** RCAML **********)\n%s\n\n" (Ast.show_term prog);
 
-    let typed_prog = Typing.type_term prog in
+    let typed_prog = Ast_to_type.type_term prog in
     Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term typed_prog);
 
     ()

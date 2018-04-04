@@ -58,6 +58,7 @@ and term =
   |Newrgn
   |Aliasrgn of typed_term * typed_term
   |Freergn of typed_term
+  |Sequence of typed_term * typed_term
 
 and typed_term = {
   rterm : term;

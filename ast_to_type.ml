@@ -259,8 +259,29 @@ let rec type_infer env t =
   |S.Assign(t1, t2) -> assert false
   |S.Deref(t1) -> assert false
   |S.Newrgn -> subs_empty, T.mk_term T.Newrgn (generalize env (T.THnd(mk_rgn ())))
-  |S.Aliasrgn(t1, t2) -> assert false
-  |S.Freergn(t1) -> assert false
+  |S.Aliasrgn(t1, t2) ->
+    let s1, t1' = type_infer env t1 in
+    let s2, t2' = type_infer env t2 in
+    let mty1 = mty_of (T.get_type t1') in
+    let mty2 = mty_of (T.get_type t2') in
+    let r = get_rgn mty1 in
+    let s = compose_subs s1 s2 in
+    let s3 = mgu (apply_m s mty1) (T.THnd(r)) in
+    let s = compose_subs s s3 in
+    s, T.mk_term (T.Aliasrgn(t1', t2')) (generalize env (apply_m s mty2))
+  |S.Freergn(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let r = get_rgn mty1 in
+    let s2 = mgu (apply_m s1 mty1) (T.THnd(r)) in
+    let s = compose_subs s2 s1 in
+    s, T.mk_term (T.Freergn(t1')) (generalize env T.TUnit)
+  |S.Sequence(t1, t2) ->
+    let s1, t1' = type_infer env t1 in
+    let s2, t2' = type_infer env t2 in
+    let mty2 = mty_of (T.get_type t2') in
+    let s = compose_subs s1 s2 in
+    s, T.mk_term (T.Sequence(t1', t2')) (generalize env (apply_m s mty2))
 
 let subs s (T.TPoly(alpha_l, mty)) =
   let rec iter mty old_mty =
@@ -299,6 +320,7 @@ let rec subs_term s t =
       |T.Deref(t1) -> T.Deref(subs_term s t1)
       |T.Aliasrgn(t1, t2) -> T.Aliasrgn(subs_term s t1, subs_term s t2)
       |T.Freergn(t1) -> T.Freergn(subs_term s t1)
+      |T.Sequence(t1, t2) -> T.Sequence(subs_term s t1, subs_term s t2)
     )
     (subs s (T.get_type t))
 

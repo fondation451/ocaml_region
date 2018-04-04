@@ -12,7 +12,7 @@
 
 
 %token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN
-%token TRUE FALSE COMA AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL
+%token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL
 %token PLUS MINUS TIMES DIV MOD NOT AND OR
 %token LT GT LE GE NOT_EQUAL
 %token EOF
@@ -88,6 +88,7 @@ application_term:
 
 statement_term:
   |t = op_term { t }
+  |t1 = statement_term SEMICOLON t2 = statement_term { Sequence(t1, t2) }
   |IF t_cond = statement_term THEN t_then = statement_term ELSE t_else = statement_term %prec struct_prec
     { If(t_cond, t_then, t_else) }
 ;

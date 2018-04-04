@@ -20,4 +20,5 @@ in
 let l1 = Cons 1 (Cons 2 (Cons 3 (Nil @ rgn1) @ rgn1) @ rgn1) @ rgn1 in
 let l2 = Cons 4 (Cons 5 (Cons 6 (Nil @ rgn1) @ rgn1) @ rgn1) @ rgn1 in
 
-append l1 l2 rgn1
+append l1 l2 rgn1;
+freergn rgn1
