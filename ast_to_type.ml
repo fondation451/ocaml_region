@@ -1,7 +1,5 @@
 open Util
 
-exception Mutual_Def
-
 module S = Ast
 module T = Type
 
@@ -12,26 +10,56 @@ let fv_mty mty =
     match mty with
     |T.TAlpha(a) -> StrSet.add a out
     |T.TInt |T.TBool |T.TUnit |T.THnd(_) -> out
-    |T.TFun(mty_l, mty2, _) -> List.fold_left (fun out mty -> loop mty out) (loop mty2 out) mty_l
-    |T.TCouple(mty1, mty2, _) -> loop mty1 (loop mty2 out)
-    |T.TList(mty1, _) -> loop mty1 out
-    |T.TRef(mty1, _) -> loop mty1 out
+    |T.TFun(mty_l, mty2, mty3) -> List.fold_left (fun out mty -> loop mty out) (loop mty2 out) mty_l
+    |T.TCouple(mty1, mty2, mty3) -> loop mty1 (loop mty2 out)
+    |T.TList(mty1, mty2) -> loop mty1 out
+    |T.TRef(mty1, mty2) -> loop mty1 out
   in loop mty StrSet.empty
 
-let fv_ty (T.TPoly(alpha_l, mty)) = StrSet.diff (fv_mty mty) (StrSet.of_list alpha_l)
+let fv_ty (T.TPoly(alpha_l, _, mty)) = StrSet.diff (fv_mty mty) (StrSet.of_list alpha_l)
 
 let fv_ty_l ty_l = List.fold_left (fun out ty -> StrSet.union (fv_ty ty) out) StrSet.empty ty_l
 
-let rec apply_m s mty =
+let fr_mty mty =
+  let rec loop mty out =
+    match mty with
+    |T.TInt |T.TBool |T.TUnit |T.TAlpha(_) -> out
+    |T.THnd(r) -> StrSet.add r out
+    |T.TFun(mty_l, mty2, mty3) -> List.fold_left (fun out mty -> loop mty out) (loop mty2 (loop mty3 out)) mty_l
+    |T.TCouple(mty1, mty2, mty3) -> loop mty1 (loop mty2 (loop mty3 out))
+    |T.TList(mty1, mty2) -> loop mty1 (loop mty2 out)
+    |T.TRef(mty1, mty2) -> loop mty1 (loop mty2 out)
+  in loop mty StrSet.empty
+
+let fr_ty (T.TPoly(_, rgn_l, mty)) = StrSet.diff (fr_mty mty) (StrSet.of_list rgn_l)
+
+let fr_ty_l ty_l = List.fold_left (fun out ty -> StrSet.union (fr_ty ty) out) StrSet.empty ty_l
+
+let rgn_of_env env =
+  StrSet.of_list
+    (List.rev_map
+      (fun (_, T.TPoly(_, _,T.THnd(r))) -> r)
+      (StrMap.bindings (StrMap.filter (fun x (T.TPoly(_, _, mty)) -> match mty with |T.THnd(_) -> true |_ -> false) env)))
+
+let rec apply_mty s mty =
   match mty with
   |T.TAlpha(a) -> (try StrMap.find a s with Not_found -> T.TAlpha(a))
   |T.TInt |T.TBool |T.TUnit |T.THnd(_) -> mty
-  |T.TFun(mty_l, mty2, r) -> T.TFun(List.map (fun mty -> apply_m s mty) mty_l, apply_m s mty2, r)
-  |T.TCouple(mty1, mty2, r) -> T.TCouple(apply_m s mty1, apply_m s mty2, r)
-  |T.TList(mty1, r) -> T.TList(apply_m s mty1, r)
-  |T.TRef(mty1, r) -> T.TRef(apply_m s mty1, r)
+  |T.TFun(mty_l, mty2, mty3) -> T.TFun(List.map (fun mty -> apply_mty s mty) mty_l, apply_mty s mty2, apply_mty s mty3)
+  |T.TCouple(mty1, mty2, mty3) -> T.TCouple(apply_mty s mty1, apply_mty s mty2, apply_mty s mty3)
+  |T.TList(mty1, mty2) -> T.TList(apply_mty s mty1, apply_mty s mty2)
+  |T.TRef(mty1, mty2) -> T.TRef(apply_mty s mty1, apply_mty s mty2)
 
-let apply s (T.TPoly(alpha_l, mty)) = T.TPoly(alpha_l, apply_m (List.fold_left (fun out a -> StrMap.remove a out) s alpha_l) mty)
+let apply_m s mty =
+  let rec loop mty old =
+    if mty = old then
+      mty
+    else
+      loop (apply_mty s mty) mty
+  in loop (apply_mty s mty) mty
+
+let apply s (T.TPoly(alpha_l, rgn_l, mty)) =
+  T.TPoly(alpha_l, rgn_l, apply_m (List.fold_left (fun out a -> StrMap.remove a out) s alpha_l) mty)
 
 let subs_empty = StrMap.empty
 
@@ -43,9 +71,15 @@ let fv_env env = fv_ty_l (List.rev_map snd (StrMap.bindings env))
 
 let apply_env s env = StrMap.map (apply s) env
 
-let generalize env mty = T.TPoly(StrSet.elements (StrSet.diff (fv_mty mty) (fv_env env)), mty)
+let generalize env mty =
+  let s = StrSet.diff (fv_mty mty) (fv_env env) in
+  let rgn_l = StrSet.elements (StrSet.diff (fr_mty mty) (rgn_of_env env)) in
+  Printf.printf "|||||||||||||||||||||||||||\n GEN FV_MTY :\n%s\n|||||||||||||||||||||\n\n" (strset_str (fv_mty mty));
+  Printf.printf "|||||||||||||||||||||||||||\n GEN FV_ENV :\n%s\n|||||||||||||||||||||\n\n" (strset_str (fv_env env));
+  Printf.printf "|||||||||||||||||||||||||||\n GEN ENV :\n%s\n|||||||||||||||||||||\n\n" (strset_str s);
+  T.TPoly(StrSet.elements (StrSet.diff (fv_mty mty) (fv_env env)), rgn_l, mty)
 
-let instanciate (T.TPoly(alpha_l, mty)) =
+let instanciate (T.TPoly(alpha_l, rgn_l, mty)) =
   let alpha_l_ty = List.rev_map (fun _ -> T.TAlpha(mk_var ())) alpha_l in
   let s = List.fold_left2 (fun out alpha ty_alpha -> StrMap.add alpha ty_alpha out) StrMap.empty alpha_l alpha_l_ty in
   apply_m s mty
@@ -78,15 +112,14 @@ let rec mgu mty1 mty2 =
   |T.TList(mty1, _), T.TList(mty1', _) |T.TRef(mty1, _), T.TRef(mty1', _) -> mgu mty1 mty1'
   |_ -> raise (T.Type_Error(Printf.sprintf "Mgu %s %s" (T.show_rcaml_type mty1) (T.show_rcaml_type mty2)))
 
-let mty_of (T.TPoly(_, mty)) = mty
+let mty_of (T.TPoly(_, _, mty)) = mty
 
-let to_poly mty = T.TPoly([], mty)
+let to_poly mty = T.TPoly([], [], mty)
 
 let get_rgn mty =
   match mty with
   |T.THnd(r) -> r
   |_ -> mk_rgn ()
-
 
 (***********)
 
@@ -95,7 +128,15 @@ let rec type_infer env t =
   match t with
   |S.Var(var) -> begin
     try
-      subs_empty, T.mk_term (T.Var(var)) (generalize env (instanciate (StrMap.find var env)))
+Printf.printf "---------- VAR NAME %s\n\n\n" var;
+      let mty = StrMap.find var env in
+Printf.printf "---------- VAR MTY %s\n\n\n" (T.show_rcaml_type_poly mty);
+      let mty_ins = instanciate mty in
+Printf.printf "---------- VAR MTY_INS %s\n\n\n" (T.show_rcaml_type mty_ins);
+      let mty_gen = generalize env mty_ins in
+Printf.printf "---------- VAR GEN %s\n\n\n" (T.show_rcaml_type_poly mty_gen);
+      subs_empty, T.mk_term (T.Var(var)) mty_gen
+      (*subs_empty, T.mk_term (T.Var(var)) (generalize env (instanciate (StrMap.find var env)))*)
     with Not_found -> raise (T.Type_Error "Type_infer")
   end
   |S.Unit -> subs_empty, T.mk_term T.Unit (generalize env T.TUnit)
@@ -135,10 +176,11 @@ let rec type_infer env t =
         let s4 = mgu (apply_m s2 mty2) T.TBool in
         compose_subs s4 (compose_subs s3 s)
     in
+Printf.printf "|||||||||||||||||||||||||||\n DEBUG :\n%s\n|||||||||||||||||||||\n\n" (strmap_str s (T.show_rcaml_type));
     s, T.mk_term (T.Comp(c, t1', t2')) (generalize env T.TBool)
   |S.Fun(x_l, t1, t2) ->
     let a_l = List.rev_map (fun _ -> T.TAlpha(mk_var ())) x_l in
-    let env' = List.fold_left2 (fun env x mty -> StrMap.add x (T.TPoly([], mty)) env) env x_l a_l in
+    let env' = List.fold_left2 (fun env x mty -> StrMap.add x (T.TPoly([], [], mty)) env) env x_l a_l in
     let s1, t1' = type_infer env' t1 in
     let s2, t2' = type_infer (apply_env s1 env') t2 in
     let mty1 = mty_of (T.get_type t1') in
@@ -146,7 +188,7 @@ let rec type_infer env t =
     let r = get_rgn mty2 in
     let s3 = mgu (apply_m s2 mty2) (T.THnd(r)) in
     let s = compose_subs s3 (compose_subs s1 s2) in
-    s, T.mk_term (T.Fun(x_l, t1', t2')) (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l, mty1, r)))
+    s, T.mk_term (T.Fun(x_l, t1', t2')) (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l, mty1, T.THnd(r))))
   |S.App(t1, t2_l) ->
     let mty = T.TAlpha(mk_var ()) in
     let s1, t1' = type_infer env t1 in
@@ -161,8 +203,10 @@ let rec type_infer env t =
     in
     let t2_l' = List.rev t2_l' in
     let ty_t2_l = List.map (fun t -> mty_of (T.get_type t)) t2_l' in
-    let s3 = mgu (apply_m s2 mty1) (T.TFun(ty_t2_l, mty, mk_rgn ())) in
-    compose_subs s3 (compose_subs s2 s1), T.mk_term (T.App(t1', t2_l')) (generalize env (apply_m s3 mty))
+    let s3 = mgu (apply_m s2 mty1) (T.TFun(ty_t2_l, mty, T.THnd(mk_rgn ()))) in
+    let s = compose_subs s3 (compose_subs s2 s1) in
+Printf.printf "ESTOYYYYYYYYYYYYYYYYY subs: %s\nty_t1': %s\n\n\n\n\n\n" (strmap_str s T.show_rcaml_type) (T.show_rcaml_type_poly (T.get_type t1'));
+    compose_subs s3 (compose_subs s2 s1), T.mk_term (T.App(t1', t2_l')) (generalize env (apply_m s mty))
   |S.If(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
@@ -174,7 +218,9 @@ let rec type_infer env t =
     let s3, t3' = type_infer env t3 in
     let mty3 = mty_of (T.get_type t3') in
     let s4 = mgu (apply_m s2 mty2) (apply_m s3 mty3) in
-    compose_subs s1' (compose_subs s2 (compose_subs s3 s4)), T.mk_term (T.If(t1', t2', t3')) (generalize env (apply_m s4 mty2))
+    let s = compose_subs s1 (compose_subs s1' (compose_subs s2 (compose_subs s3 s4))) in
+Printf.printf "|||||||||||||||||||||||||||\n DEBUG :\n%s\n|||||||||||||||||||||\n\n" (strmap_str s (T.show_rcaml_type));
+    s, T.mk_term (T.If(t1', t2', t3')) (generalize env (apply_m s4 mty2))
   |S.Let(x, t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
@@ -183,12 +229,25 @@ let rec type_infer env t =
     compose_subs s1 s2, T.mk_term (T.Let(x, t1', t2')) (T.get_type t2')
   |S.Letrec(f, t1, t2) ->
     let a = mk_var () in
-    let env' = StrMap.add f (T.TPoly([], T.TAlpha(a))) env in
+    let env' = StrMap.add f (T.TPoly([], [], T.TAlpha(a))) env in
     let s1, t1' = type_infer env' t1 in
     let mty1 = mty_of (T.get_type t1') in
-    let env'' = StrMap.add f (generalize (apply_env s1 env') mty1) env' in
+    let infered_mty1 = apply_m s1 (T.TAlpha(a)) in
+    Printf.printf "AQUIIIIIIIIIIIIIIIIIII %s ?= %s\n\n\n\n\n\n" (T.show_rcaml_type mty1) (T.show_rcaml_type infered_mty1);
+    let s1' = mgu (apply_m s1 mty1) infered_mty1 in
+    Printf.printf "BEFORE EVALUATION %s\n\n" (T.show_rcaml_type_poly (T.get_type t1'));
+Printf.printf "|||||||||||||||||||||||||||\n BEFORE GEN :\n%s\n|||||||||||||||||||||\n\n" (strmap_str s1 (T.show_rcaml_type));
+Printf.printf "|||||||||||||||||||||||||||\n ENV :\n%s\n|||||||||||||||||||||\n\n" (strmap_str env (T.show_rcaml_type_poly));
+Printf.printf "|||||||||||||||||||||||||||\n ENV' :\n%s\n|||||||||||||||||||||\n\n" (strmap_str env' (T.show_rcaml_type_poly));
+Printf.printf "|||||||||||||||||||||||||||\n APPLIED ENV :\n%s\n|||||||||||||||||||||\n\n" (strmap_str (apply_env s1 env) (T.show_rcaml_type_poly));
+Printf.printf "|||||||||||||||||||||||||||\n APPLIED ENV' :\n%s\n|||||||||||||||||||||\n\n" (strmap_str (apply_env s1 env') (T.show_rcaml_type_poly));
+    Printf.printf "EVALUATION ENV %s\n\n\n\n\n\n" (T.show_rcaml_type_poly (generalize (apply_env s1 env) mty1));
+    Printf.printf "EVALUATION ENV' %s\n\n\n\n\n\n" (T.show_rcaml_type_poly (generalize (apply_env s1 env') mty1));
+    let env'' = StrMap.add f (generalize (apply_env s1 env) mty1) env' in
     let s2, t2' = type_infer (apply_env s1 env'') t2 in
-    compose_subs s1 s2, T.mk_term (T.Letrec(f, t1', t2')) (T.get_type t2')
+    let s = compose_subs s1' (compose_subs s1 s2) in
+Printf.printf "|||||||||||||||||||||||||||\n DEBUG :\n%s\n|||||||||||||||||||||\n\n" (strmap_str s (T.show_rcaml_type));
+    s, T.mk_term (T.Letrec(f, t1', t2')) (T.get_type t2')
   |S.Pair(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -202,13 +261,13 @@ let rec type_infer env t =
     let s = compose_subs s3 (compose_subs s2 s1) in
     let s4 = mgu (apply_m s mty3) (T.THnd(r)) in
     let s = compose_subs s4 s in
-    s, T.mk_term (T.Pair(t1', t2', t3')) (generalize env (T.TCouple(mty1, mty2, r)))
+    s, T.mk_term (T.Pair(t1', t2', t3')) (generalize env (T.TCouple(mty1, mty2, T.THnd(r))))
   |S.Fst(t1) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
     let a1 = T.TAlpha(mk_var ()) in
     let a2 = T.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty1) (T.TCouple(a1, a2, mk_rgn ())) in
+    let s2 = mgu (apply_m s1 mty1) (T.TCouple(a1, a2, T.THnd(mk_rgn ()))) in
     let s = compose_subs s1 s2 in
     s, T.mk_term (T.Fst(t1')) (generalize env (apply_m s a1))
   |S.Snd(t1) ->
@@ -216,30 +275,34 @@ let rec type_infer env t =
     let mty1 = mty_of (T.get_type t1') in
     let a1 = T.TAlpha(mk_var ()) in
     let a2 = T.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty1) (T.TCouple(a1, a2, mk_rgn ())) in
+    let s2 = mgu (apply_m s1 mty1) (T.TCouple(a1, a2, T.THnd(mk_rgn ()))) in
     let s = compose_subs s1 s2 in
     s, T.mk_term (T.Snd(t1')) (generalize env (apply_m s a2))
   |S.Hd(t1) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
     let a1 = T.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty1) (T.TList(a1, mk_rgn ())) in
+    let s2 = mgu (apply_m s1 mty1) (T.TList(a1, T.THnd(mk_rgn ()))) in
     let s = compose_subs s1 s2 in
     s, T.mk_term (T.Hd(t1')) (generalize env (apply_m s a1))
   |S.Tl(t1) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
     let a1 = T.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty1) (T.TList(a1, mk_rgn ())) in
+    let s2 = mgu (apply_m s1 mty1) (T.TList(a1, T.THnd(mk_rgn ()))) in
     let s = compose_subs s1 s2 in
     s, T.mk_term (T.Tl(t1')) (generalize env (apply_m s mty1))
   |S.Nil(t1) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
+    let tmp_a = mk_var () in
+    let a1 = T.TAlpha(tmp_a) in
+    Printf.printf "DEBUG !!!!!!!!!!!!!! %s \n\n" tmp_a;
     let r = get_rgn mty1 in
-    let s2 = mgu (apply_m s1 mty1) (T.THnd(r)) in
+    let s2 = mgu a1 (apply_m s1 mty1) in
     let s = compose_subs s1 s2 in
-    s, T.mk_term (T.Nil(t1')) (generalize env (T.TList(T.TAlpha(mk_var ()), r)))
+Printf.printf "|||||||||||||||||||||||||||\n DEBUG :\n%s\n|||||||||||||||||||||\n\n" (strmap_str s (T.show_rcaml_type));
+    s, T.mk_term (T.Nil(t1')) (generalize env (T.TList(T.TAlpha(mk_var ()), a1)))
   |S.Cons(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -251,10 +314,10 @@ let rec type_infer env t =
     let mty3 = mty_of (T.get_type t3') in
     let r = get_rgn mty3 in
     let s = compose_subs s3 (compose_subs s2 s1) in
-    let s4 = mgu (apply_m s mty2) (T.TList(mty1, mk_rgn ())) in
+    let s4 = mgu (apply_m s mty2) (T.TList(mty1, T.THnd(mk_rgn ()))) in
     let s5 = mgu (apply_m s mty3) (T.THnd(r)) in
     let s = compose_subs s5 (compose_subs s4 s) in
-    s, T.mk_term (T.Cons(t1', t2', t3')) (generalize env (apply_m s (T.TList(apply_m s mty1, r))))
+    s, T.mk_term (T.Cons(t1', t2', t3')) (generalize env (apply_m s (T.TList(apply_m s mty1, T.THnd(r)))))
   |S.Ref(t1, t2) -> assert false
   |S.Assign(t1, t2) -> assert false
   |S.Deref(t1) -> assert false
@@ -282,7 +345,7 @@ let rec type_infer env t =
     let mty2 = mty_of (T.get_type t2') in
     let s = compose_subs s1 s2 in
     s, T.mk_term (T.Sequence(t1', t2')) (generalize env (apply_m s mty2))
-
+(*
 let subs s (T.TPoly(alpha_l, mty)) =
   let rec iter mty old_mty =
     Printf.printf "subs %s\n" (T.show_rcaml_type mty);
@@ -293,6 +356,26 @@ let subs s (T.TPoly(alpha_l, mty)) =
   in
   Printf.printf "subs %s\n" (T.show_rcaml_type mty);
   iter (apply_m s mty) mty
+*)
+
+let subs s (T.TPoly(alpha_l, rgn_l, mty)) =
+(*Printf.printf ">>>>>>>>> SUBSTITUTION :\n%s\n\n" (strmap_str s (T.show_rcaml_type));*)
+(*Printf.printf "subs old mty = %s\n" (T.show_rcaml_type mty);*)
+(*  let mty' = apply_m (List.fold_left (fun out a -> StrMap.remove a out) s alpha_l) mty in*)
+  let mty' = apply_m s mty in
+(*Printf.printf "subs new mty = %s\n" (T.show_rcaml_type mty');*)
+  T.TPoly(StrSet.elements (fv_mty mty'), rgn_l, mty')
+
+let subs_iter s ty =
+  let rec iter ty old_ty =
+(*    Printf.printf "subs %s\n" (T.show_rcaml_type_poly ty);*)
+    if ty = old_ty then
+      ty
+    else
+      iter (subs s ty) ty
+  in
+(*  Printf.printf "subs %s\n" (T.show_rcaml_type_poly ty);*)
+  iter (subs s ty) ty
 
 let rec subs_term s t =
   T.mk_term
@@ -322,10 +405,28 @@ let rec subs_term s t =
       |T.Freergn(t1) -> T.Freergn(subs_term s t1)
       |T.Sequence(t1, t2) -> T.Sequence(subs_term s t1, subs_term s t2)
     )
-    (subs s (T.get_type t))
+    (subs_iter s (T.get_type t))
+
+(*
+let rec subs_rgn env t =
+  let te = T.get_term t in
+  let ty = T.get_type t in
+  match te with
+  |T.Unit |T.Bool(_) |T.Int(_) |T.Var(_) |T.Newrgn -> t
+  |T.Binop(op, t1, t2) -> T.mk_term (T.Binop(op, subs_rgn env t1, subs_rgn env t2)) (generalize_rgn env ty)
+  |T.Not(t1) -> T.mk_term (T.Not(subs_rgn env t1)) (generalize_rgn env ty)
+  |T.Neg(t1) -> T.mk_term (T.Neg(subs_rgn env t1)) (generalize_rgn env ty)
+  |T.Comp(c, t1, t2) -> T.mk_term (T.Comp(c, subs_rgn env t1, subs_rgn env t2)) (generalize_rgn env ty)
+  |T.Fun(arg_l, t1, t_rgn) ->
+    let r = get_rgn (mty_of (T.get_type t_rgn)) in
+    T.mk_term (T.Fun(arg_l, 
+
+*)
+
 
 let type_inference env t =
   let s, t = type_infer env t in
+  Printf.printf ">>>>>>>>> SUBSTITUTION :\n%s\n\n" (strmap_str s (T.show_rcaml_type));
   subs_term s t
 
 let type_term t = type_inference StrMap.empty t
