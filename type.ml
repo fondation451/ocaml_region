@@ -13,9 +13,11 @@ type rcaml_type =
   |TRef of rcaml_type * regions
   |THnd of regions
 and rcaml_type_poly =
-  |TPoly of string list * rcaml_type
+  |TPoly of string list * string list * rcaml_type
 
-and regions = string
+and regions =
+  |RRgn of string
+  |RAlpha of string
 
 and binop = Ast.binop =
   |Op_add
