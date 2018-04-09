@@ -1,7 +1,5 @@
 open Util
 
-exception Mutual_Def
-
 module S = Ast
 module T = Type
 

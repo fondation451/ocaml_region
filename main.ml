@@ -44,6 +44,9 @@ let () =
     let typed_prog = Ast_to_type.type_term prog in
     Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term typed_prog);
 
+    let region_prog = Type_to_region.convert_term typed_prog in
+    Printf.printf "(********** RCAML REGION **********)\n%s\n\n" (Region.show_typed_term region_prog);
+
     ()
 
   with
