@@ -12,7 +12,7 @@ let rec append l1 l2 rgn =
   if l1 = Nil @ rgn then
     l2
   else
-    Cons (hd l1) (append (tl l1) l2 rgn) @ rgn
+    Cons (hd l1) (append (tl l1) l2) @ rgn
 @
   rgn
 in
