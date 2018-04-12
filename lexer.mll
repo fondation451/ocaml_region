@@ -30,6 +30,8 @@
       "freergn", FREERGN;
       "mod", MOD;
       "not", NOT;
+      "begin", BEGIN;
+      "end", END;
     ] in
     h
 

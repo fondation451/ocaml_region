@@ -11,7 +11,7 @@
 %}
 
 
-%token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN
+%token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN BEGIN END
 %token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL
 %token PLUS MINUS TIMES DIV MOD NOT AND OR
 %token LT GT LE GE NOT_EQUAL
@@ -47,7 +47,8 @@ entry:
 ;
 
 atomic_term:
-  |LPAR t = any_term RPAR { t }
+  |BEGIN t = sequence_term END { t }
+  |LPAR t = sequence_term RPAR { t }
   |i = INTEGER { Int(i) }
   |id = IDENT { Var(id) }
   |UNIT { Unit }
@@ -74,7 +75,7 @@ application_term:
   |HD t = application_term { Hd(t) }
   |TL t = application_term { Tl(t) }
   |NEWRGN UNIT { Newrgn }
-  |ALIASRGN t_rgn = application_term AT t = application_term { Aliasrgn(t_rgn, t) }
+  |ALIASRGN t_rgn = application_term IN t = any_term { Aliasrgn(t_rgn, t) }
   |FREERGN t_rgn = application_term { Freergn(t_rgn) }
 ;
 
@@ -88,7 +89,6 @@ application_term:
 
 statement_term:
   |t = op_term { t }
-  |t1 = statement_term SEMICOLON t2 = statement_term { Sequence(t1, t2) }
   |IF t_cond = statement_term THEN t_then = statement_term ELSE t_else = statement_term %prec struct_prec
     { If(t_cond, t_then, t_else) }
 ;
@@ -99,6 +99,11 @@ any_term:
   |LET id = IDENT EQUAL t1 = any_term IN t2 = any_term { Let(id, t1, t2) }
   |LET REC id_f = IDENT id_l = nonempty_list(IDENT) EQUAL t1 = any_term AT t_rgn = any_term IN t2 = any_term
     { Letrec(id_f, Fun(id_l, t1, t_rgn), t2) }
+;
+
+sequence_term:
+  |t = any_term { t }
+  |t1 = sequence_term SEMICOLON t2 = sequence_term { Sequence(t1, t2) }
 ;
 
 %inline binop:

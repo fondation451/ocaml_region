@@ -1,15 +1,15 @@
-(* Region for OCaml with regions *)
+(* Region checked for OCaml with regions *)
 
 open Util
 
-exception Region_Error of string
+exception Check_Error of string
 
 type rcaml_type =
   |TInt
   |TBool
   |TUnit
   |TAlpha of string
-  |TFun of rcaml_type list * rcaml_type * regions
+  |TFun of rcaml_type list * rcaml_type * regions * capabilities * capabilities * effects
   |TCouple of rcaml_type * rcaml_type * regions
   |TList of rcaml_type * regions
   |TRef of rcaml_type * regions
@@ -19,7 +19,21 @@ and rcaml_type_poly =
 
 and regions = string
 
-and binop = Type.binop =
+and capability =
+  |Linear
+  |Relaxed
+  |Used
+
+and capabilities = (regions * capability) list
+
+and effect =
+  |ERead of regions
+  |EWrite of regions
+  |EAlloc of regions
+
+and effects = effect list
+
+and binop = Region.binop =
   |Op_add
   |Op_sub
   |Op_mul
@@ -28,7 +42,7 @@ and binop = Type.binop =
   |Op_and
   |Op_or
 
-and comp = Type.comp =
+and comp = Region.comp =
   |Ceq |Cneq
   |Clt |Cgt
   |Cle |Cge
@@ -72,3 +86,23 @@ and typed_term = {
 let mk_term t ty = {rterm = t; rtype = ty}
 let get_term t = t.rterm
 let get_type t = t.rtype
+
+let empty_gamma = []
+let empty_capabilities = []
+let empty_effects = []
+
+let effects_of l = l
+let cap_of l = List.map (fun r -> (r, Relaxed)) l
+let cap_of_strmap s = StrMap.bindings s
+
+let add_cap r p c = (r, p)::(List.remove_assoc r c)
+let remove_cap r c = List.remove_assoc r c
+let diff_cap c1 c2 = List.fold_left (fun out (r, p) -> List.remove_assoc r out) c1 c2
+let union_cap c1 c2 = List.fold_left (fun out (r, p) -> add_cap r p out) c2 c1
+
+let merge_effects e1 e2 = List.rev_append e1 (List.fold_left (fun out x -> List.filter (fun y -> x <> y) out) e2 e1)
+
+let cap r c = List.mem_assoc r c
+let cap_linear r c = try List.assoc r c = Linear with Not_found -> false
+let cap_relaxed r c = try List.assoc r c = Relaxed with Not_found -> false
+let cap_used r c = try List.assoc r c = Used with Not_found -> false

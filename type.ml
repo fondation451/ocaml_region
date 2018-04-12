@@ -1,5 +1,7 @@
 (* Type for OCaml with regions *)
 
+open Util
+
 exception Type_Error of string
 
 type rcaml_type =

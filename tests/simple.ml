@@ -6,9 +6,12 @@
 *)
 
 let r1 = newrgn () in
-
-let rec g x r = (x, x) @ r @ r1 in
-
-let rec f x r = g x r @ r1 in
-
-snd (f (4, 4) @ r1 r1)
+let r2 = newrgn () in
+begin
+  aliasrgn r1 in
+  let rec g x = x @ r2 in
+  let rec f x = g x @ r1 in
+  f;
+  freergn r1;
+  freergn r2
+end

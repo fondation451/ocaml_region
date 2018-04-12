@@ -47,6 +47,9 @@ let () =
     let region_prog = Type_to_region.convert_term typed_prog in
     Printf.printf "(********** RCAML REGION **********)\n%s\n\n" (Region.show_typed_term region_prog);
 
+    let checked_prog = Region_to_check.rgn_check region_prog in
+    Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term checked_prog);
+
     ()
 
   with
@@ -60,6 +63,12 @@ let () =
     exit 1
   |Type.Type_Error(str) ->
     eprintf "Typing error : %s\n@." str;
+    exit 1
+  |Region.Region_Error(str) ->
+    eprintf "Region error : %s\n@." str;
+    exit 1
+  |Check.Check_Error(str) ->
+    eprintf "Check error : %s\n@." str;
     exit 1
 (*  |_ ->
     eprintf "Compilation error\n@.";*)
