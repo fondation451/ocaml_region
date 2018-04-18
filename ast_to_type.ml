@@ -113,8 +113,8 @@ let rgnbind r1 r2 =
     if rgn1 = rgn2 then
       subs_empty
     else
-      subs_empty
-      (*raise (T.Type_Error "rgnbind")*)
+      (*subs_empty*)
+      raise (T.Type_Error "rgnbind")
   |T.RAlpha(rgn1), T.RRgn(rgn2) -> StrMap.empty, StrMap.singleton rgn1 r2
   |T.RRgn(rgn1), T.RAlpha(rgn2) -> StrMap.empty, StrMap.singleton rgn2 r1
   |T.RAlpha(rgn1), T.RAlpha(rgn2) ->
@@ -280,6 +280,7 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let env = apply_env s2 env in
     let s3, t3' = type_infer env t3 in
     let mty3 = mty_of (T.get_type t3') in
+    Printf.printf "((((((((((((((((((( IF TYPAGE DES BRANCHES TERMINE !!!!\n\n";
     let s4 = mgu (apply_m s2 mty2) (apply_m s3 mty3) in
     let s = compose_subs s4 (compose_subs s3 (compose_subs s2 (compose_subs s1' s1))) in
     s, T.mk_term (T.If(t1', t2', t3')) (generalize env (apply_m s mty2))

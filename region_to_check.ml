@@ -3,8 +3,6 @@ open Util
 module S = Region
 module T = Check
 
-exception RGN_USED of string
-
 let rec lift_type mty =
   match mty with
   |S.TInt -> T.TInt
@@ -38,15 +36,28 @@ let fr_mty mty =
     |T.TList(mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
 
-let unrestricted c g = true
+let unrestricted c g = true (* TODO *)
 
-let sub_cap c1 c2 = true
+let sub_cap c1 c2 =
+  T.cap_forall
+(*    (fun (r, p) ->
+      (p = T.Relaxed && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
+      (p = T.Linear && T.cap_linear r c1)) *)
+    (fun (r, p) ->
+      (p = T.Relaxed && T.cap_relaxed r c1) ||
+      (p = T.Linear && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
+      (p = T.Used && T.cap r c1))
+    c2
 
-let add_rgn r c =
-  if StrMap.mem r c then
-    StrMap.add r T.Relaxed c
-  else
-    StrMap.add r T.Linear c
+(* Construction CIN *)
+let sum_rgn_p p1 p2 =
+  match p1, p2 with
+  |T.Used, _ -> p2
+  |_, T.Used -> p1
+  |_ -> T.Relaxed
+
+let add_rgn r p c =
+  StrMap.add r (try sum_rgn_p (StrMap.find r c) p with Not_found -> p) c
 
 let merge_rgn _ _ _ = Some(T.Relaxed)
 
@@ -56,10 +67,10 @@ let rec rgn_of_mty mty =
   |S.TFun(mty_l, mty2, r) ->
     List.fold_left
       (fun out mty1 -> StrMap.union merge_rgn out (rgn_of_mty mty1))
-      (add_rgn r (rgn_of_mty mty2))
+      (add_rgn r T.Used (rgn_of_mty mty2))
       mty_l
-  |S.TCouple(mty1, mty2, r) -> StrMap.union merge_rgn (rgn_of_mty mty1) (add_rgn r (rgn_of_mty mty2))
-  |S.TList(mty1, r) |S.TRef(mty1, r) -> add_rgn r (rgn_of_mty mty1)
+  |S.TCouple(mty1, mty2, r) -> StrMap.union merge_rgn (rgn_of_mty mty1) (add_rgn r T.Used (rgn_of_mty mty2))
+  |S.TList(mty1, r) |S.TRef(mty1, r) -> add_rgn r T.Used (rgn_of_mty mty1)
   |S.THnd(r) -> StrMap.singleton r T.Linear
 
 let rgn_of_ty (S.TPoly(_, _, mty)) = rgn_of_mty mty
@@ -80,20 +91,110 @@ let rec rgn_of t =
       |S.App(t1, t_l) -> List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
     )
     (rgn_of_ty (S.get_type t))
+(* **** *)
 
-let subs_empty = StrMap.empty, StrMap.empty
 
-(*
-let compose_subs s1 s2 =
-  let st1, sr1 = s1 in
-  let st2, sr2 = s2 in
-  StrMap.union (fun a mty1 mty2 -> mty1
+(* Instanciation of regions in application *)
+let merge_some s1 s2 =
+  match s1, s2 with
+  |None, None -> None
+  |Some(out), None |None, Some(out) -> Some(out)
+  |Some(out1), Some(out2) -> if out1 = out2 then Some(out1) else assert false
+
+let rec replace_rgn s mty =
+  let replace s r = try StrMap.find r s with Not_found -> r in
+  let replace_cap s c = T.cap_map (fun (r, p) -> (replace s r, p)) c in
+  let replace_effects s phi =
+    T.effects_map
+      (fun e ->
+        match e with
+        |T.ERead(r) -> T.ERead(replace s r)
+        |T.EWrite(r) -> T.EWrite(replace s r)
+        |T.EAlloc(r) -> T.EAlloc(replace s r))
+      phi
+  in
+  match mty with
+  |T.TInt|T.TBool |T.TUnit |T.TAlpha(_) -> mty
+  |T.THnd(r) -> T.THnd(replace s r)
+  |T.TFun(arg_l, mty1, r, cin, cout, phie) ->
+    T.TFun
+      (
+        List.map (replace_rgn s) arg_l,
+        replace_rgn s mty1,
+        replace s r,
+        replace_cap s cin,
+        replace_cap s cout,
+        replace_effects s phie
+      )
+  |T.TCouple(mty1, mty2, r) -> T.TCouple(replace_rgn s mty1, replace_rgn s mty2, replace s r)
+  |T.TList(mty1, r) -> T.TList(replace_rgn s mty1, replace s r)
+  |T.TRef(mty1, r) -> T.TRef(replace_rgn s mty1, replace s r)
+
+let rec replace_rgn_ty s (T.TPoly(_, _, mty)) = replace_rgn s mty
+
+let rec instance_of_rgn r mty1 mty2 =
+  match mty1, mty2 with
+  |T.TInt, T.TInt |T.TBool, T.TBool |T.TUnit, T.TUnit |T.TAlpha(_), T.TAlpha(_) |T.TAlpha(_), _ |_, T.TAlpha(_) -> None
+  |T.THnd(r1), T.THnd(r2) ->
+    if r1 = r then
+      Some(r2)
+    else
+      None
+  |T.TFun(arg_l1, dst1, r1, _, _, _), T.TFun(arg_l2, dst2, r2, _, _, _) ->
+    if r1 = r then
+      Some(r2)
+    else
+      List.fold_left2
+        (fun out arg1 arg2 -> merge_some (instance_of_rgn r arg1 arg2) out)
+        (instance_of_rgn r dst1 dst2)
+        arg_l1
+        arg_l2
+  |T.TCouple(mty1, mty2, r1), T.TCouple(mty1', mty2', r2) ->
+    if r1 = r then
+      Some(r2)
+    else
+      merge_some (instance_of_rgn r mty1 mty1') (instance_of_rgn r mty2 mty2')
+  |T.TList(mty1, r1), T.TList(mty1', r2) |T.TRef(mty1, r1), T.TRef(mty1', r2) ->
+    if r = r1 then
+      Some(r2)
+    else
+      instance_of_rgn r mty1 mty1'
+  |_ -> raise (T.Check_Error(Printf.sprintf "instance_of_rgn %s %s %s" r (T.show_rcaml_type mty1) (T.show_rcaml_type mty2)))
+
+let instance_of_rgn_l r_l mty1 mty2 =
+  let s = List.fold_left
+            (fun out r ->
+              match instance_of_rgn r mty1 mty2 with
+              |Some(r') -> StrMap.add r r' out
+              |None -> out)
+            StrMap.empty r_l
+  in
+  let r_proceed = List.map fst (StrMap.bindings s) in
+  List.filter (fun r -> not (List.mem r r_proceed)) r_l, s
+
+let rec instance_of_rgn_mty_l r_l mty1_l mty2_l =
+  let rec loop r_l mty1_l mty2_l out =
+    if r_l = [] then
+      [], out
+    else begin
+      match mty1_l, mty2_l with
+      |[], [] -> r_l, out
+      |mty1::mty1_l', mty2::mty2_l' ->
+        let r_l', s = instance_of_rgn_l r_l mty1 mty2 in
+        loop r_l' mty1_l' mty2_l' (StrMap.union (fun _ r1 r2 -> Some(r1)) s out)
+      |_ -> assert false
+    end
+  in loop r_l mty1_l mty2_l StrMap.empty
 
 let inst_ty f_ty arg_ty_l =
   match f_ty with
   |T.TPoly(a_l, r_l, T.TFun(mty_l, mty1, mty2, cin, cout, phie)) ->
+    let r_l', s = instance_of_rgn_mty_l r_l mty_l arg_ty_l in
+    a_l, r_l', s
   |_ -> assert false
-*)
+(* **** *)
+
+
 let mty_of (T.TPoly(_, _, mty)) = mty
 
 let str_of_cap cap =
@@ -189,11 +290,16 @@ let rec check_term env g c t =
           head'::t_l_out, g_out, c_out, T.merge_effects phi' phi_out
       in loop g1 c1 t_l
     in
-    match T.get_type t1' with
+    let a_l', r_l', s = inst_ty (T.get_type t1') (List.map (fun t -> mty_of (T.get_type t)) t_l') in
+    let t1_ty'' = replace_rgn_ty s (T.get_type t1') in
+    let t1'' = T.mk_term (T.get_term t1') (T.TPoly(a_l', r_l', t1_ty'')) in
+    Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_ty'');
+    match T.get_type t1'' with
     |T.TPoly(a_l_f, r_l_f, T.TFun(arg_mty_l, mty_res, mty_r, cin, cout, phie)) as f_ty ->
+      Printf.printf "C2 : %s\n\n" (T.show_capabilities c2);
 (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
       if sub_cap c2 cin then
-        T.mk_term (T.App(t1', t_l')) (T.TPoly(a_l, r_l, lift_type ty)),
+        T.mk_term (T.App(t1'', t_l')) (T.TPoly(a_l, r_l, lift_type ty)),
         g2,
         T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
         T.merge_effects phie (T.merge_effects phi1 phi2)
@@ -274,9 +380,5 @@ let rec check_term env g c t =
   |_ -> assert false
 
 let rgn_check t =
-  try
-    let t', _, _, _ = check_term StrMap.empty T.empty_gamma T.empty_capabilities t in
-    t'
-  with
-  |RGN_USED(r) -> raise (T.Check_Error (Printf.sprintf "Capability of region %s already used" r))
-  |T.Check_Error(str) -> raise (T.Check_Error str)
+  let t', _, _, _ = check_term StrMap.empty T.empty_gamma T.empty_capabilities t in
+  t'

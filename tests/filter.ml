@@ -12,7 +12,7 @@ aliasrgn rgn1 in
 aliasrgn rgn2 in
 
 let rec filter p l out rgn =
-  if l = Nil @ rgn then
+  if l = Nil @ rgn1 then
     out
   else
     if p (hd l) then

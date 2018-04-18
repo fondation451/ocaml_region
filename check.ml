@@ -100,7 +100,22 @@ let remove_cap r c = List.remove_assoc r c
 let diff_cap c1 c2 = List.fold_left (fun out (r, p) -> List.remove_assoc r out) c1 c2
 let union_cap c1 c2 = List.fold_left (fun out (r, p) -> add_cap r p out) c2 c1
 
+let cap_map f c =
+  List.fold_left
+    (fun out (r, p) ->
+      let r', p' = f (r, p) in
+      add_cap r' p' out)
+    empty_capabilities
+    c
+let cap_forall f c = List.for_all f c
+
 let merge_effects e1 e2 = List.rev_append e1 (List.fold_left (fun out x -> List.filter (fun y -> x <> y) out) e2 e1)
+let add_effects e phi = e::(List.filter (fun e' -> e' <> e) phi)
+let effects_map f phi =
+  List.fold_left
+    (fun out e -> add_effects (f e) out)
+    empty_effects
+    phi (* Bug ordre d'insertion, effacement TODO *)
 
 let cap r c = List.mem_assoc r c
 let cap_linear r c = try List.assoc r c = Linear with Not_found -> false
