@@ -84,7 +84,7 @@ let rec rgn_of t =
       |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
         rgn_of t1
       |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
-      |S.Fun(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
+      |S.Fun(_, _, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
         StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
       |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
         StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
@@ -252,7 +252,7 @@ let rec check_term env g c t =
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
     let phi = T.merge_effects phi1 phi2 in
     T.mk_term (T.Comp(comp, t1', t2')) (T.TPoly(a_l, r_l, T.TBool)), g2, c2, phi
-  |S.Fun(arg_l, t1, t2), S.TFun(mty_l, mty1, r) ->
+  |S.Fun(f, arg_l, t1, t2), S.TFun(mty_l, mty1, r) ->
     let t2', g2, c2, phi2 = check_term env g c t2 in
     let env' =
       List.fold_left2
@@ -273,7 +273,7 @@ let rec check_term env g c t =
     print_cap cout' "cout'";
     if T.cap r c2 && g2 = g1 && unrestricted cin g2 then
       T.mk_term
-        (T.Fun(arg_l, t1', t2'))
+        (T.Fun(f, arg_l, t1', t2'))
         (T.TPoly(a_l, r_l, T.TFun(List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f))),
       g2, c2, T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2
     else
@@ -291,6 +291,7 @@ let rec check_term env g c t =
       in loop g1 c1 t_l
     in
     let a_l', r_l', s = inst_ty (T.get_type t1') (List.map (fun t -> mty_of (T.get_type t)) t_l') in
+    let s' = StrMap.bindings s in
     let t1_ty'' = replace_rgn_ty s (T.get_type t1') in
     let t1'' = T.mk_term (T.get_term t1') (T.TPoly(a_l', r_l', t1_ty'')) in
     Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_ty'');
@@ -299,7 +300,7 @@ let rec check_term env g c t =
       Printf.printf "C2 : %s\n\n" (T.show_capabilities c2);
 (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
       if sub_cap c2 cin then
-        T.mk_term (T.App(t1'', t_l')) (T.TPoly(a_l, r_l, lift_type ty)),
+        T.mk_term (T.App(s', t1'', t_l')) (T.TPoly(a_l, r_l, lift_type ty)),
         g2,
         T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
         T.merge_effects phie (T.merge_effects phi1 phi2)

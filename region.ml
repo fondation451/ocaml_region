@@ -33,6 +33,8 @@ and comp = Type.comp =
   |Clt |Cgt
   |Cle |Cge
 
+and self = Type.self
+
 and term =
   |Unit
   |Bool of bool
@@ -42,7 +44,7 @@ and term =
   |Not of typed_term
   |Neg of typed_term
   |Comp of comp * typed_term * typed_term
-  |Fun of string list * typed_term * typed_term
+  |Fun of self * string list * typed_term * typed_term
   |App of typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
   |Let of string * typed_term * typed_term

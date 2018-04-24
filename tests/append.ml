@@ -12,8 +12,6 @@ begin
   aliasrgn rgn0 in
   aliasrgn rgn1 in
 
-  let rgn2 = newrgn () in
-
   let rec append l1 l2 rgn =
     if l1 = Nil @ rgn0 then
       l2

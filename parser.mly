@@ -95,10 +95,10 @@ statement_term:
 
 any_term:
   |t = statement_term { t }
-  |FUN id_l = nonempty_list(IDENT) ARROW t_body = any_term AT t_rgn = any_term { Fun(id_l, t_body, t_rgn) }
+  |FUN id_l = nonempty_list(IDENT) ARROW t_body = any_term AT t_rgn = any_term { Fun("", id_l, t_body, t_rgn) }
   |LET id = IDENT EQUAL t1 = any_term IN t2 = any_term { Let(id, t1, t2) }
   |LET REC id_f = IDENT id_l = nonempty_list(IDENT) EQUAL t1 = any_term AT t_rgn = any_term IN t2 = any_term
-    { Letrec(id_f, Fun(id_l, t1, t_rgn), t2) }
+    { Letrec(id_f, Fun(id_f, id_l, t1, t_rgn), t2) }
 ;
 
 sequence_term:
