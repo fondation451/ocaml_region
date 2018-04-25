@@ -82,6 +82,8 @@ rule token = parse
   |"()" { UNIT }
   |'(' { LPAR }
   |')' { RPAR }
+  |'[' { LBRA }
+  |']' { RBRA }
   |":=" { AFFECT }
   |'!' { DEREF }
   |'+' { PLUS }

@@ -12,7 +12,7 @@
 
 
 %token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN BEGIN END
-%token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL
+%token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL LBRA RBRA
 %token PLUS MINUS TIMES DIV MOD NOT AND OR
 %token LT GT LE GE NOT_EQUAL
 %token EOF
@@ -54,7 +54,6 @@ atomic_term:
   |UNIT { Unit }
   |TRUE { Bool(true) }
   |FALSE { Bool(false) }
-  |LPAR t1 = atomic_term COMA t2 = atomic_term RPAR AT t_rgn = atomic_term { Pair(t1, t2, t_rgn) }
   |NIL AT t_rgn = atomic_term { Nil(t_rgn) }
   |CONS t1 = atomic_term t2 = atomic_term AT t_rgn = atomic_term { Cons(t1, t2, t_rgn) }
   |DEREF t = atomic_term { Deref(t) }
@@ -77,6 +76,7 @@ application_term:
   |NEWRGN UNIT { Newrgn }
   |ALIASRGN t_rgn = application_term IN t = any_term { Aliasrgn(t_rgn, t) }
   |FREERGN t_rgn = application_term { Freergn(t_rgn) }
+  |LPAR t1 = application_term COMA t2 = application_term RPAR AT t_rgn = application_term { Pair(t1, t2, t_rgn) }
 ;
 
 %inline op_term:

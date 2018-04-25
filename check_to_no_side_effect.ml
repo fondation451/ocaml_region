@@ -67,7 +67,15 @@ let convert_to_simplex m vars lin_prog =
   in
   loop_line (loop_var sim vars) lin_prog
 
-let find_rgn_sub r s = try fst (List.find (fun (r1, r2) -> r2 = r) s) with Not_found -> r
+let find_rgn_sub r s =
+  try
+    fst (List.find (fun (r1, r2) -> r2 = r) s)
+  with Not_found ->
+    Printf.printf "Not subs %s, should be pass ? %b\n\n" r (List.exists (fun (r1, r2) -> r1 = r) s);
+    if List.exists (fun (r1, r2) -> r1 = r) s then
+      raise Not_found
+    else
+      r
 
 let no_side_effect ty =
   match ty with
@@ -80,22 +88,36 @@ let no_side_effect ty =
       phi
   |_ -> assert false
 
+let vars_of_exp (pot, _) = StrSet.singleton pot
+
+let vars_of_line (line, _) = List.fold_left (fun out exp -> StrSet.union (vars_of_exp exp) out) StrSet.empty line
+
+let vars_of_lines lines = List.fold_left (fun out line -> StrSet.union (vars_of_line line) out) StrSet.empty lines
+
 let process_r r_l t =
   let add_fun_pot env r f v = Hashtbl.add env (r, f) v in
   let find_fun_pot env r f = Hashtbl.find env (r, f) in
+  let remove_fun_pot env r f = Hashtbl.remove env (r, f) in
   let env = Hashtbl.create 10 in
   let vars = ref (StrSet.empty) in
   let rec process_t t out =
+  Printf.printf "--------- NO SIDE PROCCES ------------\n%s\n\n" (S.show_typed_term t);
+  Printf.printf "ENV\n";
+  Hashtbl.iter (fun (r, f) (c, d, lines) -> Printf.printf "%s %s : (%s, %s, %s)\n" f r c d (H.show_integer_prog lines)) env;
+  Printf.printf "OUT\n";
+  StrMap.iter (fun r (lines, n) -> Printf.printf "%s : %s\n%s\n" r n (H.show_integer_prog lines)) out;
+  Printf.printf "\n\n";
     let te = S.get_term t in
     let ty = S.get_type t in
     match te with
-    |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) -> out
-(*      StrMap.map
+    |S.Unit |S.Bool(_) |S.Int(_) -> out
+    |S.Var(_) ->
+      StrMap.map
         (fun (lines, n) ->
           let m = H.mk_pot vars in
           let new_line = [m, 1; n, -1], 0 in
           new_line::lines, m)
-        out*)
+        out
     |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) -> process_t t2 (process_t t1 out)
     |S.Not(t1) |S.Neg(t1) -> process_t t1 out
     |S.Fun(f, arg_l, t1, t2) ->
@@ -107,14 +129,21 @@ let process_r r_l t =
         let out_f =
           StrMap.mapi
             (fun r (lines, d') ->
+              let c = List.assoc r l_c in
               let d = List.assoc r l_d in
-              let new_line_fun = [d, 1; d', -1], 0 in
-              new_line_fun::lines, d)
+              if c <> d' then
+                let new_line_fun = [d, 1; d', -1], 0 in
+                new_line_fun::lines, d
+              else
+                [], c)
             (process_t t1 (StrMap.mapi (fun r (lines, n) -> [], List.assoc r l_c) out))
         in
         StrMap.iter
           (fun r (lines, d) ->
-            add_fun_pot env r f (List.assoc r l_c, d, lines))
+            if lines <> [] then
+              add_fun_pot env r f (List.assoc r l_c, d, lines)
+            else
+              remove_fun_pot env r f)
           out_f
       end;
       out
@@ -130,7 +159,7 @@ let process_r r_l t =
               let cr, dr, fun_lines = find_fun_pot env (find_rgn_sub r s) (fun_name t1) in
               Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) cr dr;
               ([n'', 1; cr, 1; n', -1; dr, -1], 0)::fun_lines
-            with Not_found -> [[n'', 1; n', -1], 0]
+            with Not_found -> if n'' <> n' then [[n'', 1; n', -1], 0] else []
           in
           List.append new_lines lines, n'')
         (List.fold_left (fun out t2 -> process_t t2 out) out t_l)
@@ -188,12 +217,20 @@ let process_r r_l t =
     |S.Freergn(t1) -> process_t t1 out
     |S.Sequence(t1, t2) -> process_t t2 (process_t t1 out)
   in
-  let memories = List.map (fun r -> r, H.mk_pot vars) r_l in
+  let memories = List.map (fun r -> r, H.mk_pot' r vars) r_l in
   let lin_progs = List.fold_left (fun out r -> StrMap.add r ([], List.assoc r memories) out) StrMap.empty r_l in
   let lin_progs = process_t t lin_progs in
   let lin_progs = List.map (fun (r, (lines, _)) -> r, lines) (StrMap.bindings lin_progs) in
   let vars = StrSet.elements !vars in
-  let sim_l = List.rev_map (fun (r, lines) -> r, convert_to_simplex (List.assoc r memories) vars lines) lin_progs in
+  let sim_l = List.map
+    (fun (r, lines) ->
+      r, convert_to_simplex
+           (List.assoc r memories)
+           (StrSet.elements (StrSet.add (List.assoc r memories) (vars_of_lines lines)))
+           lines)
+    (List.rev lin_progs)
+  in
+  Printf.printf "ICICIICICIICICICICICICII\n\n\n\n";
   let sol_l = List.map (fun (r, sim) -> r, -1 * (from_coef (Simplex.compute sim [List.assoc r memories, Num.Int(-1)]))) sim_l in
   sol_l
 
