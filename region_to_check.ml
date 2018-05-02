@@ -350,9 +350,19 @@ let rec check_term env g c t =
     let t3', g3, c3, phi3 = check_term env g2 c2 t3 in
     let phi = T.merge_effects phi1 (T.merge_effects phi2 phi3) in
     T.mk_term (T.Cons(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c3, phi
-  |S.Ref(t1, t2), _ -> assert false
-  |S.Assign(t1, t2), _ -> assert false
-  |S.Deref(t1), _ -> assert false
+  |S.Ref(t1, t2), _ ->
+    let t1', g1, c1, phi1 = check_term env g c t1 in
+    let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
+    let phi = T.merge_effects phi1 phi2 in
+    T.mk_term (T.Ref(t1', t2')) (T.TPoly(a_l, r_l, lift_type ty)), g2, c2, phi
+  |S.Assign(t1, t2), S.TRef(_, r) ->
+    let t1', g1, c1, phi1 = check_term env g c t1 in
+    let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
+    let phi = T.merge_effects (T.effects_of [T.EWrite(r)]) (T.merge_effects phi1 phi2) in
+    T.mk_term (T.Assign(t1', t2')) (T.TPoly(a_l, r_l, lift_type ty)), g2, c2, phi
+  |S.Deref(t1), _ ->
+    let t1', g1, c1, phi1 = check_term env g c t1 in
+    T.mk_term (T.Deref(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
   |S.Newrgn, S.THnd(r) -> T.mk_term T.Newrgn (T.TPoly(a_l, r_l, T.THnd(r))), g, T.add_cap r T.Linear c, T.empty_effects
   |S.Aliasrgn(t1, t2), _ -> begin
     let t1', g1, c1, phi1 = check_term env g c t1 in

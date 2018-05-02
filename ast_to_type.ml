@@ -374,9 +374,37 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s5 = mgu (apply_m s mty3) (T.THnd(r)) in
     let s = compose_subs s5 (compose_subs s4 s) in
     s, T.mk_term (T.Cons(t1', t2', t3')) (generalize env (apply_m s (T.TList(apply_m s mty1, r))))
-  |S.Ref(t1, t2) -> assert false
-  |S.Assign(t1, t2) -> assert false
-  |S.Deref(t1) -> assert false
+  |S.Ref(t1, t2) ->
+    let s1, t1' = type_infer env t1 in
+    let env = apply_env s1 env in
+    let s2, t2' = type_infer env t2 in
+    let env  = apply_env s2 env in
+    let mty1 = mty_of (T.get_type t1') in
+    let mty2 = mty_of (T.get_type t2') in
+    let r = T.RAlpha(mk_rgn ()) in
+    let s = compose_subs s2 s1 in
+    let s3 = mgu (apply_m s mty2) (T.THnd(r)) in
+    let s = compose_subs s3 s in
+    s, T.mk_term (T.Ref(t1', t2')) (generalize env (apply_m s (T.TRef(apply_m s mty1, r))))
+  |S.Assign(t1, t2) ->
+    let s1, t1' = type_infer env t1 in
+    let env = apply_env s1 env in
+    let s2, t2' = type_infer env t2 in
+    let env  = apply_env s2 env in
+    let s = compose_subs s2 s1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let mty2 = mty_of (T.get_type t2') in
+    let s3 = mgu (apply_m s mty1) (T.TRef(apply_m s mty2, T.RAlpha(mk_rgn ()))) in
+    let s = compose_subs s3 s in
+    s, T.mk_term (T.Assign(t1', t2')) (generalize env T.TUnit)
+  |S.Deref(t1) ->
+    let s1, t1' = type_infer env t1 in
+    let mty1 = mty_of (T.get_type t1') in
+    let tmp = mk_var () in
+    let a1 = T.TAlpha(tmp) in
+    let s2 = mgu (apply_m s1 mty1) (T.TRef(a1, T.RAlpha(mk_rgn ()))) in
+    let s = compose_subs s2 s1 in
+    s, T.mk_term (T.Deref(t1')) (generalize env a1)
   |S.Newrgn -> subs_empty, T.mk_term T.Newrgn (generalize env (T.THnd(T.RRgn(mk_rgn ()))))
   |S.Aliasrgn(t1, t2) ->
     let s1, t1' = type_infer env t1 in

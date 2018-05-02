@@ -200,9 +200,9 @@ let process_r r_l t =
           else
             lines, n)
         (process_t t2 (process_t t1 out))
-    |S.Ref(t1, t2) -> assert false
-    |S.Assign(t1, t2) -> assert false
-    |S.Deref(t1) -> assert false
+    |S.Ref(t1, t2) -> process_t t2 (process_t t1 out)
+    |S.Assign(t1, t2) -> process_t t2 (process_t t1 out)
+    |S.Deref(t1) -> process_t t1 out
     |S.Newrgn ->
       StrMap.mapi
         (fun r (lines, n) ->
