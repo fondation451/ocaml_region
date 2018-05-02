@@ -284,6 +284,7 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s4 = mgu (apply_m s2 mty2) (apply_m s3 mty3) in
     let s = compose_subs s4 (compose_subs s3 (compose_subs s2 (compose_subs s1' s1))) in
     s, T.mk_term (T.If(t1', t2', t3')) (generalize env (apply_m s mty2))
+  |S.Match(t_match, t_nil, x, xs, t_cons) -> assert false
   |S.Let(x, t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in

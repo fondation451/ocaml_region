@@ -14,6 +14,7 @@
 %token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN BEGIN END
 %token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL LBRA RBRA
 %token PLUS MINUS TIMES DIV MOD NOT AND OR
+%token MATCH WITH CASE
 %token LT GT LE GE NOT_EQUAL
 %token EOF
 %token <int> INTEGER
@@ -91,6 +92,10 @@ statement_term:
   |t = op_term { t }
   |IF t_cond = statement_term THEN t_then = statement_term ELSE t_else = statement_term %prec struct_prec
     { If(t_cond, t_then, t_else) }
+  |MATCH t_match = statement_term WITH
+   CASE NIL ARROW t_nil = statement_term
+   CASE CONS id_x = IDENT id_xs = IDENT ARROW t_cons = statement_term
+    { Match(t_match, t_nil, id_x, id_xs, t_cons) }
 ;
 
 any_term:

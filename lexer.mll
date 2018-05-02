@@ -32,6 +32,8 @@
       "not", NOT;
       "begin", BEGIN;
       "end", END;
+      "match", MATCH;
+      "with", WITH;
     ] in
     h
 
@@ -72,6 +74,7 @@ rule token = parse
   |',' { COMA }
   |';' { SEMICOLON }
   |'@' { AT }
+  |"|" { CASE }
   |"->" { ARROW }
   |'=' { EQUAL }
   |"<>" { NOT_EQUAL }

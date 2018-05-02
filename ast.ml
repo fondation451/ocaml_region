@@ -28,6 +28,7 @@ and term =
   |Fun of self * string list * term * term
   |App of term * term list
   |If of term * term * term
+  |Match of term * term * string * string * term
   |Let of string * term * term
   |Letrec of string * term * term
   |Pair of term * term * term
