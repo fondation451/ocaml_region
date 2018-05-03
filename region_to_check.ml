@@ -86,7 +86,7 @@ let rec rgn_of t =
       |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
       |S.Fun(_, _, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
         StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
-      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
+      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
         StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
       |S.App(t1, t_l) -> List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
     )
@@ -313,6 +313,16 @@ let rec check_term env g c t =
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
     let t3', g3, c3, phi3 = check_term env g2 c2 t3 in
     T.mk_term (T.If(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c3, T.merge_effects phi1 (T.merge_effects phi2 phi3)
+  |S.Match(t_match, t_nil, x, xs, t_cons), _ ->
+    let t_match', g1, c1, phi1 = check_term env g c t_match in
+    let t_nil', g2, c2, phi2 = check_term env g1 c1 t_nil in
+    let t_cons', g3, c3, phi3 = check_term env g2 c2 t_cons in
+    T.mk_term
+      (T.Match(t_match', t_nil', x, xs, t_cons'))
+      (T.TPoly(a_l, r_l, lift_type ty)),
+    g3,
+    c3,
+    T.merge_effects phi1 (T.merge_effects phi2 phi3)
   |S.Let(x, t1, t2), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term (StrMap.add x (T.get_type t1') env) g1 c1 t2 in

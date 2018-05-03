@@ -61,6 +61,7 @@ and term =
   |Fun of self * string list * typed_term * typed_term
   |App of (string * string) list * typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
+  |Match of typed_term * typed_term * string * string * typed_term
   |Let of string * typed_term * typed_term
   |Letrec of string * typed_term * typed_term
   |Pair of typed_term * typed_term * typed_term

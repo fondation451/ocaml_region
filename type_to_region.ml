@@ -34,6 +34,7 @@ let rec convert_term t =
       |S.Fun(f, arg_l, t1, t2) -> T.Fun(f, arg_l, convert_term t1, convert_term t2)
       |S.App(t1, t_l) -> T.App(convert_term t1, List.map convert_term t_l)
       |S.If(t1, t2, t3) -> T.If(convert_term t1, convert_term t2, convert_term t3)
+      |S.Match(t_match, t_nil, x, xs, t_cons) -> T.Match(convert_term t_match, convert_term t_nil, x, xs, convert_term t_cons)
       |S.Let(x, t1, t2) -> T.Let(x, convert_term t1, convert_term t2)
       |S.Letrec(x, t1, t2) -> T.Letrec(x, convert_term t1, convert_term t2)
       |S.Pair(t1, t2, t3) -> T.Pair(convert_term t1, convert_term t2, convert_term t3)

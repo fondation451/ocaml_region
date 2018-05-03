@@ -85,8 +85,6 @@ rule token = parse
   |"()" { UNIT }
   |'(' { LPAR }
   |')' { RPAR }
-  |'[' { LBRA }
-  |']' { RBRA }
   |":=" { AFFECT }
   |'!' { DEREF }
   |'+' { PLUS }
@@ -95,6 +93,8 @@ rule token = parse
   |'/' { DIV }
   |"&&" { AND }
   |"||" { OR }
+  |'{' { LBRA }
+  |'}' { RBRA }
   |"(*" {comment_block lexbuf}
   |eof {EOF}
   |_

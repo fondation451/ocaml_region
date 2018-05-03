@@ -24,7 +24,7 @@ let rec rgn_of t =
       |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2) |S.Let(_, t1, t2)
       |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
         StrSet.union (rgn_of t1) (rgn_of t2)
-      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
+      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
         StrSet.union (rgn_of t1) (StrSet.union (rgn_of t2) (rgn_of t3))
       |S.App(_, t1, t_l) ->
         List.fold_left (fun out t2 -> StrSet.union (rgn_of t2) out) (rgn_of t1) t_l
@@ -178,6 +178,7 @@ let process_r r_l t =
           let new_line2 = [m, 1; m3, -1], 0 in
           new_line1::new_line2::lines, m)
         out3
+    |S.Match(t_match, t_nil, x, xs, t_cons) -> assert false
     |S.Let(x, t1, t2) |S.Letrec(x, t1, t2) -> process_t t2 (process_t t1 out)
     |S.Pair(t1, t2, t3) ->
       StrMap.mapi
