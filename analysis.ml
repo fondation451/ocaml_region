@@ -2,15 +2,24 @@
 
 open Util
 
-exception No_Side_Effect_Error of string
+exception Analysis_Error of string
 
-type potential = string
+type regions = Check.regions
 
-and integer_prog_expr = potential * int
+and pot = Check.pot =
+  |PPot of string
+  |PLit of int
+  |PSize of int
+  |PAdd of pot * pot
+  |PMin of pot
+  |PMul of pot * pot
+  |PUnit
 
-and integer_prog_line = integer_prog_expr list * int
+and rgn_pot = Check.rgn_pot
 
-and integer_prog = integer_prog_line list
+and fun_pot_desc = Check.fun_pot_desc
+
+and integer_prog = pot list
 
 and ressource =
   |RPAIR
@@ -20,6 +29,10 @@ and ressource =
   |RHND
 
 [@@deriving show { with_path = false }]
+
+let mk_pot_with_name name s =
+  s := StrSet.add name !s;
+  name
 
 let cpt = ref (-1)
 let mk_pot s =

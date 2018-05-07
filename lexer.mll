@@ -34,6 +34,7 @@
       "end", END;
       "match", MATCH;
       "with", WITH;
+      "size", SIZE;
     ] in
     h
 
@@ -73,6 +74,7 @@ rule token = parse
   |ident as str_id {try Hashtbl.find kwds str_id with Not_found -> IDENT(str_id)}
   |',' { COMA }
   |';' { SEMICOLON }
+  |':' { COLON }
   |'@' { AT }
   |"|" { CASE }
   |"->" { ARROW }
@@ -85,6 +87,8 @@ rule token = parse
   |"()" { UNIT }
   |'(' { LPAR }
   |')' { RPAR }
+  |'[' { LSBRA }
+  |']' { RSBRA }
   |":=" { AFFECT }
   |'!' { DEREF }
   |'+' { PLUS }

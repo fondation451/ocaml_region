@@ -84,7 +84,7 @@ let rec rgn_of t =
       |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
         rgn_of t1
       |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
-      |S.Fun(_, _, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
+      |S.Fun(_, _, t1, t2, _) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
         StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
       |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
         StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
@@ -209,7 +209,7 @@ let print_cap c name =
     ("[" ^ (List.fold_left (fun out (r, cap) -> Printf.sprintf "%s, (%s, %s)" out r (str_of_cap cap)) "" c) ^ "]")
 
 let rec check_term env g c t =
-  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);
+(*  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);*)
   let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in
   match te, ty with
@@ -252,7 +252,7 @@ let rec check_term env g c t =
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
     let phi = T.merge_effects phi1 phi2 in
     T.mk_term (T.Comp(comp, t1', t2')) (T.TPoly(a_l, r_l, T.TBool)), g2, c2, phi
-  |S.Fun(f, arg_l, t1, t2), S.TFun(mty_l, mty1, r) ->
+  |S.Fun(f, arg_l, t1, t2, pot), S.TFun(mty_l, mty1, r) ->
     let t2', g2, c2, phi2 = check_term env g c t2 in
     let env' =
       List.fold_left2
@@ -273,7 +273,7 @@ let rec check_term env g c t =
     print_cap cout' "cout'";
     if T.cap r c2 && g2 = g1 && unrestricted cin g2 then
       T.mk_term
-        (T.Fun(f, arg_l, t1', t2'))
+        (T.Fun(f, arg_l, t1', t2', pot))
         (T.TPoly(a_l, r_l, T.TFun(List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f))),
       g2, c2, T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2
     else

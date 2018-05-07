@@ -77,9 +77,9 @@ let compute sim l =
     match Sim.Result.get opt sim with
     |Sim.Core.Unknown     -> assert false
     |Sim.Core.Sat _       -> assert false
-    |Sim.Core.Unsat ex    -> raise (No_side_effect.No_Side_Effect_Error "Unsat memory problem")
-    |Sim.Core.Unbounded _ -> raise (No_side_effect.No_Side_Effect_Error "Unbounded memory") (* Format.printf " is unbounded@." *)
-    |Sim.Core.Max (mx,_)  -> 
+    |Sim.Core.Unsat ex    -> raise (Analysis.Analysis_Error "Unsat memory problem")
+    |Sim.Core.Unbounded _ -> raise (Analysis.Analysis_Error "Unbounded memory") (* Format.printf " is unbounded@." *)
+    |Sim.Core.Max (mx,_)  ->
       let {Sim.Core.max_v; is_le; reason} = Lazy.force mx in
       max_v
 (*      let {Sim.Core.max_v; is_le; reason} = Lazy.force mx in

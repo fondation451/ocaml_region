@@ -35,6 +35,19 @@ and comp = Type.comp =
 
 and self = Type.self
 
+and pot =
+  |PPot of string
+  |PLit of int
+  |PSize of int
+  |PAdd of pot * pot
+  |PMin of pot
+  |PMul of pot * pot
+  |PUnit
+
+and rgn_pot = regions
+
+and fun_pot_desc = (rgn_pot * (pot * pot)) list
+
 and term =
   |Unit
   |Bool of bool
@@ -44,7 +57,7 @@ and term =
   |Not of typed_term
   |Neg of typed_term
   |Comp of comp * typed_term * typed_term
-  |Fun of self * string list * typed_term * typed_term
+  |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
   |App of typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
   |Match of typed_term * typed_term * string * string * typed_term

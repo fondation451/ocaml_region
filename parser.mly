@@ -12,9 +12,10 @@
 
 
 %token FUN IF THEN ELSE LET IN REC FST SND NIL CONS REF NEWRGN ALIASRGN FREERGN BEGIN END
-%token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL LBRA RBRA
+%token TRUE FALSE COMA SEMICOLON AT ARROW EQUAL LPAR RPAR AFFECT DEREF UNIT HD TL LBRA RBRA LSBRA RSBRA
 %token PLUS MINUS TIMES DIV MOD NOT AND OR
 %token MATCH WITH CASE
+%token SIZE COLON
 %token LT GT LE GE NOT_EQUAL
 %token EOF
 %token <int> INTEGER
@@ -78,6 +79,14 @@ application_term:
   |ALIASRGN t_rgn = application_term IN t = any_term { Aliasrgn(t_rgn, t) }
   |FREERGN t_rgn = application_term { Freergn(t_rgn) }
   |LPAR t1 = application_term COMA t2 = application_term RPAR AT t_rgn = application_term { Pair(t1, t2, t_rgn) }
+  |LSBRA elem_l = separated_list(SEMICOLON, application_term) RSBRA AT t_rgn = application_term
+    {
+      let rec loop elem_l =
+        match elem_l with
+        |[] -> Nil(t_rgn)
+        |hd::tl -> Cons(hd, loop tl, t_rgn)
+      in loop elem_l
+    }
 ;
 
 %inline op_term:
@@ -98,12 +107,31 @@ statement_term:
     { Match(t_match, t_nil, id_x, id_xs, t_cons) }
 ;
 
+pot_term:
+  |SIZE LPAR v = IDENT RPAR { PSize(v) }
+  |i = INTEGER { PLit(i) }
+  |p1 = pot_term PLUS p2 = pot_term { PAdd(p1, p2) }
+  |MINUS p1 = pot_term { PMin(p1) }
+  |LPAR p1 = pot_term RPAR { p1 }
+;
+
+rgn_pot_term:
+  |v = IDENT COLON p1 = pot_term ARROW p2 = pot_term { (v, (p1, p2)) }
+;
+
 any_term:
   |t = statement_term { t }
-  |FUN id_l = nonempty_list(IDENT) ARROW t_body = any_term AT t_rgn = any_term { Fun("", id_l, t_body, t_rgn) }
+  |FUN id_l = nonempty_list(IDENT) ARROW t_body = any_term AT t_rgn = any_term { Fun("", id_l, t_body, t_rgn, None) }
   |LET id = IDENT EQUAL t1 = any_term IN t2 = any_term { Let(id, t1, t2) }
   |LET REC id_f = IDENT id_l = nonempty_list(IDENT) EQUAL t1 = any_term AT t_rgn = any_term IN t2 = any_term
-    { Letrec(id_f, Fun(id_f, id_l, t1, t_rgn), t2) }
+    { Letrec(id_f, Fun(id_f, id_l, t1, t_rgn, None), t2) }
+  |LET REC id_f = IDENT id_l = nonempty_list(IDENT) EQUAL
+    LBRA pot = separated_list(SEMICOLON, rgn_pot_term) RBRA
+    t1 = any_term AT t_rgn = any_term IN t2 = any_term
+    {
+      let pot = match pot with |[] -> None |_ -> Some(pot) in
+      Letrec(id_f, Fun(id_f, id_l, t1, t_rgn, pot), t2)
+    }
 ;
 
 sequence_term:

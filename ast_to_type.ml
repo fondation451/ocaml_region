@@ -240,7 +240,7 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
         compose_subs s4 (compose_subs s3 s)
     in
     s, T.mk_term (T.Comp(c, t1', t2')) (generalize env T.TBool)
-  |S.Fun(f, x_l, t1, t2) ->
+  |S.Fun(f, x_l, t1, t2, pot) ->
     let a_l = List.rev_map (fun _ -> T.TAlpha(mk_var ())) x_l in
     let env' = List.fold_left2 (fun env x mty -> StrMap.add x (T.TPoly([], [], mty)) env) env x_l a_l in
     let s1, t1' = type_infer env' t1 in
@@ -251,7 +251,7 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s3 = mgu (apply_m s2 mty2) (T.THnd(r)) in
     let s = compose_subs s3 (compose_subs s2 s1) in
     s, T.mk_term
-         (T.Fun(f, x_l, t1', t2'))
+         (T.Fun(f, x_l, t1', t2', pot))
          (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l, apply_m s mty1, apply_r (snd s) r)))
   |S.App(t1, t2_l) ->
     let mty = T.TAlpha(mk_var ()) in
@@ -467,7 +467,7 @@ let rec subs_term s t =
       |T.Not(t1) -> T.Not(subs_term s t1)
       |T.Neg(t1) -> T.Neg(subs_term s t1)
       |T.Comp(c, t1, t2) -> T.Comp(c, subs_term s t1, subs_term s t2)
-      |T.Fun(f, arg_l, t1, t2) -> T.Fun(f, arg_l, subs_term s t1, subs_term s t2)
+      |T.Fun(f, arg_l, t1, t2, pot) -> T.Fun(f, arg_l, subs_term s t1, subs_term s t2, pot)
       |T.App(t1, t_l) -> T.App(subs_term s t1, List.map (subs_term s) t_l)
       |T.If(t1, t2, t3) -> T.If(subs_term s t1, subs_term s t2, subs_term s t3)
       |T.Match(t_match, t_nil, x, xs, t_cons) -> T.Match(subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)

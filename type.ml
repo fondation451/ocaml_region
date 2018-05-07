@@ -37,6 +37,18 @@ and comp = Ast.comp =
 
 and self = Ast.self
 
+and pot = Ast.pot =
+  |PPot of string
+  |PLit of int
+  |PSize of string
+  |PAdd of pot * pot
+  |PMin of pot
+  |PMul of pot * pot
+
+and rgn_pot = Ast.rgn_pot
+
+and fun_pot_desc = Ast.fun_pot_desc
+
 and term =
   |Unit
   |Bool of bool
@@ -46,7 +58,7 @@ and term =
   |Not of typed_term
   |Neg of typed_term
   |Comp of comp * typed_term * typed_term
-  |Fun of self * string list * typed_term * typed_term
+  |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
   |App of typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
   |Match of typed_term * typed_term * string * string * typed_term

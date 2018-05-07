@@ -16,6 +16,18 @@ and comp =
 
 and self = string
 
+and pot =
+  |PPot of string
+  |PLit of int
+  |PSize of string
+  |PAdd of pot * pot
+  |PMin of pot
+  |PMul of pot * pot
+
+and rgn_pot = string
+
+and fun_pot_desc = (rgn_pot * (pot * pot)) list
+
 and term =
   |Unit
   |Bool of bool
@@ -25,7 +37,7 @@ and term =
   |Not of term
   |Neg of term
   |Comp of comp * term * term
-  |Fun of self * string list * term * term
+  |Fun of self * string list * term * term * fun_pot_desc option
   |App of term * term list
   |If of term * term * term
   |Match of term * term * string * string * term

@@ -17,7 +17,7 @@ type rcaml_type =
 and rcaml_type_poly =
   |TPoly of string list * string list * rcaml_type
 
-and regions = string
+and regions = Region.regions
 
 and capability =
   |Linear
@@ -49,6 +49,19 @@ and comp = Region.comp =
 
 and self = Region.self
 
+and pot = Region.pot =
+  |PPot of string
+  |PLit of int
+  |PSize of int
+  |PAdd of pot * pot
+  |PMin of pot
+  |PMul of pot * pot
+  |PUnit
+
+and rgn_pot = Region.rgn_pot
+
+and fun_pot_desc = Region.fun_pot_desc
+
 and term =
   |Unit
   |Bool of bool
@@ -58,7 +71,7 @@ and term =
   |Not of typed_term
   |Neg of typed_term
   |Comp of comp * typed_term * typed_term
-  |Fun of self * string list * typed_term * typed_term
+  |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
   |App of (string * string) list * typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
   |Match of typed_term * typed_term * string * string * typed_term
