@@ -56,7 +56,7 @@ atomic_term:
   |UNIT { Unit }
   |TRUE { Bool(true) }
   |FALSE { Bool(false) }
-  |NIL AT t_rgn = atomic_term { Nil(t_rgn) }
+  |NIL { Nil }
   |CONS t1 = atomic_term t2 = atomic_term AT t_rgn = atomic_term { Cons(t1, t2, t_rgn) }
   |DEREF t = atomic_term { Deref(t) }
 ;
@@ -83,7 +83,7 @@ application_term:
     {
       let rec loop elem_l =
         match elem_l with
-        |[] -> Nil(t_rgn)
+        |[] -> Nil
         |hd::tl -> Cons(hd, loop tl, t_rgn)
       in loop elem_l
     }

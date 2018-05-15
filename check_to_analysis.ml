@@ -6,9 +6,9 @@ module H = Analysis
 let fv_term t =
   let rec loop t out =
     match S.get_term t with
-    |S.Unit |S.Bool(_) |S.Int(_) |S.Newrgn -> out
+    |S.Unit |S.Bool(_) |S.Int(_) |S.Newrgn |S.Nil -> out
     |S.Var(v) ->StrSet.add v out
-    |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
+    |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
       loop t1 out
     |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _)
     |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
@@ -32,8 +32,8 @@ let rec concrete_rgn t =
     |S.TPoly(_, _, S.THnd(r)) -> StrSet.singleton r
     |_ -> assert false
   end
-  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn -> StrSet.empty
-  |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
+  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrSet.empty
+  |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
     concrete_rgn t1
   |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
   |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
@@ -58,8 +58,8 @@ let rec rgn_of t =
   StrSet.union
     (
       match S.get_term t with
-      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn -> StrSet.empty
-      |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
+      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrSet.empty
+      |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
         rgn_of t1
       |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
       |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
@@ -296,7 +296,7 @@ let process_r r_l cr_l t =
     let te = S.get_term t in
     let ty = S.get_type t in
     match te with
-    |S.Unit |S.Bool(_) |S.Int(_) -> out
+    |S.Unit |S.Bool(_) |S.Int(_) |S.Nil -> out
     |S.Var(_) ->
       StrMap.map
         (fun (lines, n) ->
@@ -410,7 +410,7 @@ let process_r r_l cr_l t =
           else
             lines, n)
         (process_t t2 (process_t t1 out))
-    |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Nil(t1) -> process_t t1 out
+    |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) -> process_t t1 out
     |S.Cons(t1, t2, t3) ->
       StrMap.mapi
         (fun r (lines, n) ->

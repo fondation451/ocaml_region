@@ -48,7 +48,7 @@ and term =
   |Snd of term
   |Hd of term
   |Tl of term
-  |Nil of term
+  |Nil
   |Cons of term * term * term
   |Ref of term * term
   |Assign of term * term

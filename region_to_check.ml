@@ -80,9 +80,9 @@ let rec rgn_of t =
   StrMap.union merge_rgn
   (
       match S.get_term t with
-      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn -> StrMap.empty
+      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrMap.empty
       |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1)
-      |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
+      |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
         rgn_of t1
       |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
       |S.Fun(_, _, t1, t2, _) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
@@ -212,7 +212,7 @@ let print_cap c name =
     ("[" ^ (List.fold_left (fun out (r, cap) -> Printf.sprintf "%s, (%s, %s)" out r (str_of_cap cap)) "" c) ^ "]")
 
 let rec check_term env g c t =
-(*  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);*)
+  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);
   let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in
   match te, ty with
@@ -220,6 +220,8 @@ let rec check_term env g c t =
   |S.Bool(b), S.TBool -> T.mk_term (T.Bool(b)) (T.TPoly(a_l, r_l, T.TBool)), g, c, T.empty_effects
   |S.Int(i), S.TInt -> T.mk_term (T.Int(i)) (T.TPoly(a_l, r_l, T.TInt)), g, c, T.empty_effects
   |S.Var(v), _ -> begin
+    print_cap c "c";
+    Printf.printf "CHECKING OF %s\n\n\n" v;
     let ty' = try StrMap.find v env with Not_found -> T.TPoly(a_l, r_l, lift_type ty) in
     let T.TPoly(_, _, mty') = ty' in
     match mty' with
@@ -354,9 +356,8 @@ let rec check_term env g c t =
   |S.Tl(t1), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     T.mk_term (T.Tl(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
-  |S.Nil(t1), S.TList(_, r) ->
-    let t1', g1, c1, phi1 = check_term env g c t1 in
-    T.mk_term (T.Nil(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
+  |S.Nil, S.TList(_, r) ->
+    T.mk_term T.Nil (T.TPoly(a_l, r_l, lift_type ty)), g, c, T.empty_effects
   |S.Cons(t1, t2, t3), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in

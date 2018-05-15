@@ -235,8 +235,8 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
         let s3 = mgu (apply_m s mty1) (apply_m s mty2) in
         compose_subs s3 s
       |_ ->
-        let s3 = mgu (apply_m s1 mty1) T.TBool in
-        let s4 = mgu (apply_m s2 mty2) T.TBool in
+        let s3 = mgu (apply_m s1 mty1) T.TInt in
+        let s4 = mgu (apply_m s2 mty2) T.TInt in
         compose_subs s4 (compose_subs s3 s)
     in
     s, T.mk_term (T.Comp(c, t1', t2')) (generalize env T.TBool)
@@ -371,8 +371,8 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s2 = mgu (apply_m s1 mty1) (T.TList(a1, T.RAlpha(mk_rgn ()))) in
     let s = compose_subs s2 s1 in
     s, T.mk_term (T.Tl(t1')) (generalize env (apply_m s mty1))
-  |S.Nil(t1) ->
-    let s1, t1' = type_infer env t1 in
+  |S.Nil ->
+(*    let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
     let tmp = mk_rgn () in
     let r = T.RAlpha(tmp) in
@@ -380,7 +380,8 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s = compose_subs s2 s1 in
   let st, sr = s in
   Printf.printf "-------------------NIL SUBSTITUTION (tmp = %s) TYPE :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" tmp (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions);
-    s, T.mk_term (T.Nil(t1')) (generalize env (T.TList(T.TAlpha(mk_var ()), apply_r (snd s) r)))
+    s, T.mk_term (T.Nil(t1')) (generalize env (T.TList(T.TAlpha(mk_var ()), apply_r (snd s) r)))*)
+    subs_empty, T.mk_term T.Nil (generalize env (T.TList(T.TAlpha(mk_var ()), T.RAlpha(mk_rgn ()))))
   |S.Cons(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -478,7 +479,7 @@ let rec subs_term s t =
       |T.Snd(t1) -> T.Snd(subs_term s t1)
       |T.Hd(t1) -> T.Hd(subs_term s t1)
       |T.Tl(t1) -> T.Tl(subs_term s t1)
-      |T.Nil(t1) -> T.Nil(subs_term s t1)
+      |T.Nil -> T.Nil
       |T.Cons(t1, t2, t3) -> T.Cons(subs_term s t1, subs_term s t2, subs_term s t3)
       |T.Ref(t1, t2) -> T.Ref(subs_term s t1, subs_term s t2)
       |T.Assign(t1, t2) -> T.Assign(subs_term s t1, subs_term s t2)

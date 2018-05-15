@@ -9,7 +9,7 @@ aliasrgn rgn1 in
 let rec duplicate xs r r1 r2 =
   { r1: size(xs) -> 0 ; r2: size(xs) -> 0 }
   match xs with
-  |Nil -> (Nil @ r1, Nil @ r2) @ r
+  |Nil -> (Nil, Nil) @ r
   |Cons h t -> begin
     let dup = duplicate t r r1 r2 in
     (Cons h (fst dup) @ r1, Cons h (snd dup) @ r2) @ r

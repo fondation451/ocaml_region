@@ -68,7 +68,7 @@ and term =
   |Snd of typed_term
   |Hd of typed_term
   |Tl of typed_term
-  |Nil of typed_term
+  |Nil
   |Cons of typed_term * typed_term * typed_term
   |Ref of typed_term * typed_term
   |Assign of typed_term * typed_term

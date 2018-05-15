@@ -98,7 +98,7 @@ let rec convert_term t env =
       |S.Snd(t1) -> T.Snd(convert_term t1 env)
       |S.Hd(t1) -> T.Hd(convert_term t1 env)
       |S.Tl(t1) -> T.Tl(convert_term t1 env)
-      |S.Nil(t1) -> T.Nil(convert_term t1 env)
+      |S.Nil -> T.Nil
       |S.Cons(t1, t2, t3) -> T.Cons(convert_term t1 env, convert_term t2 env, convert_term t3 env)
       |S.Ref(t1, t2) -> T.Ref(convert_term t1 env, convert_term t2 env)
       |S.Assign(t1, t2) -> T.Assign(convert_term t1 env, convert_term t2 env)
