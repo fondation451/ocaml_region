@@ -134,6 +134,7 @@ let effects_map f phi =
     phi (* Bug ordre d'insertion, effacement TODO *)
 
 let cap r c = List.mem_assoc r c
+let cap_find r c = List.assoc r c
 let cap_linear r c = try List.assoc r c = Linear with Not_found -> false
 let cap_relaxed r c = try List.assoc r c = Relaxed with Not_found -> false
 let cap_used r c = try List.assoc r c = Used with Not_found -> false

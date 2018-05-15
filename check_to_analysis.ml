@@ -3,6 +3,46 @@ open Util
 module S = Check
 module H = Analysis
 
+let fv_term t =
+  let rec loop t out =
+    match S.get_term t with
+    |S.Unit |S.Bool(_) |S.Int(_) |S.Newrgn -> out
+    |S.Var(v) ->StrSet.add v out
+    |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
+      loop t1 out
+    |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _)
+    |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
+      loop t1 (loop t2 out)
+    |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
+      loop t1 (loop t2 (loop t3 out))
+    |S.App(_, t1, t_l) -> List.fold_left (fun out t2 -> loop t2 out) (loop t1 out) t_l
+    |S.Match(t1, t2, x, xs, t3) ->
+      loop t1 (loop t2 (StrSet.remove x (StrSet.remove xs (loop t3 out))))
+    |S.Let(x, t1, t2) |S.Letrec(x, t1, t2) ->
+      loop t1 (StrSet.remove x (loop t2 out))
+  in
+  let tmp = (loop t StrSet.empty) in
+  Printf.printf "MARDI DEBUG : %s\n\n" (strset_str tmp);
+  tmp
+
+let rec concrete_rgn t =
+  match S.get_term t with
+  |S.Newrgn -> begin
+    match S.get_type t with
+    |S.TPoly(_, _, S.THnd(r)) -> StrSet.singleton r
+    |_ -> assert false
+  end
+  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn -> StrSet.empty
+  |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Nil(t1) |S.Deref(t1) |S.Freergn(t1) ->
+    concrete_rgn t1
+  |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
+  |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
+    StrSet.union (concrete_rgn t1) (concrete_rgn t2)
+  |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
+    StrSet.union (concrete_rgn t1) (StrSet.union (concrete_rgn t2) (concrete_rgn t3))
+  |S.App(_, t1, t_l) ->
+    List.fold_left (fun out t2 -> StrSet.union (concrete_rgn t2) out) (concrete_rgn t1) t_l
+
 let rec rgn_mty mty =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> StrSet.empty
@@ -120,24 +160,66 @@ let get_rgn (S.TPoly(_, _, mty)) =
   |S.TFun(_, _, r, _, _, _) |S.TCouple(_, _, r)
   |S.TList(_, r) |S.TRef(_, r) |S.THnd(r) -> r
 
-let rec instanciate_size p t_l =
+let rec instanciate_size p t_l out =
   match p with
-  |H.PPot(_) |H.PLit(_) -> p
+  |H.PPot(_) |H.PLit(_) -> p, out
   |H.PSize(i) ->
     let rec loop t_l i =
       match t_l with
-      |[] -> H.PUnit
+      |[] -> H.PUnit, out
       |hd::tl ->
         let ty = S.get_type hd in
         if i = 0 then
-          H.PPot(get_rgn ty)
+          let r = get_rgn ty in
+          H.PPot(r), r::out
         else
           loop tl (i-1)
     in loop t_l i
-  |H.PAdd(p1, p2) -> H.PAdd(instanciate_size p1 t_l, instanciate_size p2 t_l)
-  |H.PMin(p1) -> H.PMin(instanciate_size p1 t_l)
-  |H.PMul(p1, p2) -> H.PMul(instanciate_size p1 t_l, instanciate_size p2 t_l)
-  |H.PUnit -> H.PUnit
+  |H.PAdd(p1, p2) ->
+    let p1', out = instanciate_size p1 t_l out in
+    let p2', out = instanciate_size p2 t_l out in
+    H.PAdd(p1', p2'), out
+  |H.PMin(p1) ->
+    let p1', out = instanciate_size p1 t_l out in
+    H.PMin(p1'), out
+  |H.PMul(p1, p2) ->
+    let p1', out = instanciate_size p1 t_l out in
+    let p2', out = instanciate_size p2 t_l out in
+    H.PMul(p1', p2'), out
+  |H.PUnit -> H.PUnit, out
+
+let rec fresh_names_p p vars s =
+  match p with
+  |H.PPot(id) -> begin
+    try
+      H.PPot(StrMap.find id s), s
+    with Not_found ->
+      let new_id = H.mk_pot vars in
+      H.PPot(new_id), StrMap.add id new_id s
+  end
+  |H.PLit(i) -> H.PLit(i), s
+  |H.PSize(i) -> H.PSize(i), s
+  |H.PAdd(p1, p2) ->
+    let p1', s = fresh_names_p p1 vars s in
+    let p2', s = fresh_names_p p2 vars s in
+    H.PAdd(p1', p2'), s
+  |H.PMin(p1) ->
+    let p1', s = fresh_names_p  p1 vars s in
+    H.PMin(p1'), s
+  |H.PMul(p1, p2) ->
+    let p1', s = fresh_names_p p1 vars s in
+    let p2', s = fresh_names_p p2 vars s in
+    H.PMul(p1', p2'), s
+  |H.PUnit -> H.PUnit, s
+
+let rec fresh_names p_l vars s =
+  let rec loop p_l s out =
+    match p_l with
+    |[] -> out, s
+    |h::t ->
+      let h', s = fresh_names_p h vars s in
+      loop t s (h'::out)
+  in loop p_l s []
 
 let link_lines r lines lin_progs =
   let rec link_line lines out =
@@ -202,7 +284,7 @@ let print_fun_pot () =
         (List.fold_left (fun out p -> out ^ ";\n" ^ (H.show_pot p)) "" lines))
     env
 
-let process_r r_l t =
+let process_r r_l cr_l t =
   let vars = ref (StrSet.empty) in
   let rec process_t t out =
 (*  Printf.printf "--------- NO SIDE PROCCES ------------\n%s\n\n" (S.show_typed_term t);
@@ -225,6 +307,20 @@ let process_r r_l t =
     |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) -> process_t t2 (process_t t1 out)
     |S.Not(t1) |S.Neg(t1) -> process_t t1 out
     |S.Fun(f, arg_l, t1, t2, pot) when no_side_effect ty -> begin
+      let out =
+        StrMap.mapi
+          (fun r (lines, n) ->
+            if on_rgn r ty then
+              let m = H.PPot(H.mk_pot' "fun" vars) in
+              let fv_var = fv_term t1 in
+              let nb_fv = StrSet.cardinal (StrSet.remove f (List.fold_left (fun out arg -> StrSet.remove arg out) fv_var arg_l)) in
+              let const = nb_fv * (H.cost_of H.RCLO) in
+              let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(nb_fv * (H.cost_of H.RCLO))) in
+              new_line::lines, m
+            else
+              lines, n)
+          out
+      in
       match pot with
       |Some(fun_pot_l) ->
         List.iter (fun (r, (pc, pd)) -> add_fun_pot r f (pc, pd, [])) fun_pot_l;
@@ -258,6 +354,7 @@ let process_r r_l t =
     |S.App(s, t1, t_l) ->
       let out = process_t t1 out in
       let l_n' = List.map (fun (r, (lines, n')) -> r, n') (StrMap.bindings out) in
+      let out = List.fold_left (fun out t2 -> process_t t2 out) out t_l in
       StrMap.mapi
         (fun r (lines, n'') ->
           let new_lines =
@@ -265,14 +362,27 @@ let process_r r_l t =
             try
               Printf.printf "APPICATION SUB REGION %s -> %s\n" r (find_rgn_sub r s);
               let cr, dr, fun_lines = find_fun_pot (find_rgn_sub r s) (fun_name t1) in
-              let cr' = instanciate_size cr t_l in
-              let dr' = instanciate_size dr t_l in
+              let cr', r_cr' = instanciate_size cr t_l [] in
+              let dr', r_dr' = instanciate_size dr t_l [] in
+              let fun_lines, sub =
+                fresh_names
+                  (
+                    List.fold_left
+                      (fun fun_lines r ->
+                        let rlines, _ = StrMap.find r out in
+                        List.rev_append rlines fun_lines)
+                      fun_lines
+                      (List.rev_append r_cr' r_dr')
+                  ) vars StrMap.empty
+              in
+              let cr'', sub = fresh_names_p cr' vars sub in
+              let dr'', sub = fresh_names_p dr' vars sub in
               Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr) (H.show_pot dr);
-              (H.PAdd(H.PAdd(H.PAdd(n'', cr'), H.PMin n'), H.PMin dr'))::fun_lines
+              (H.PAdd(H.PAdd(H.PAdd(n'', cr''), H.PMin n'), H.PMin dr''))::fun_lines
             with Not_found -> if n'' <> n' then [H.PAdd(n'', H.PMin n')] else []
           in
           List.append new_lines lines, n'')
-        (List.fold_left (fun out t2 -> process_t t2 out) out t_l)
+        out
     |S.If(t1, t2, t3) ->
       let out1 = process_t t1 out in
       let l_n1 = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings out1) in
@@ -332,10 +442,11 @@ let process_r r_l t =
   let lin_progs = List.fold_left (fun out r -> StrMap.add r ([], H.PPot(List.assoc r memories)) out) StrMap.empty r_l in
   let lin_progs = process_t t lin_progs in
   let lin_progs = List.map (fun (r, (lines, _)) -> r, lines) (StrMap.bindings lin_progs) in
+  let lin_progs = List.filter (fun (r, lines) -> List.mem r cr_l) lin_progs in
   let vars = StrSet.elements !vars in
   let sim_l = List.map
     (fun (r, lines) ->
-      let lines = link_lines r lines lin_progs in
+      (*let lines = link_lines r lines lin_progs in*)
       r, convert_to_simplex
            (List.assoc r memories)
            (StrSet.elements (StrSet.add (List.assoc r memories) (vars_of_lines lines)))
@@ -350,4 +461,5 @@ let process_r r_l t =
 
 let process t =
   let r_l = StrSet.elements (rgn_of t) in
-  process_r r_l t
+  let cr_l = StrSet.elements (concrete_rgn t) in
+  process_r r_l cr_l t

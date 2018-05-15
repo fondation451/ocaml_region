@@ -36,17 +36,18 @@ let fr_mty mty =
     |T.TList(mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
 
-let unrestricted c g = true (* TODO *)
+let unrestricted c = T.cap_forall (fun (_, cap) -> cap = T.Relaxed) c
 
 let sub_cap c1 c2 =
   T.cap_forall
 (*    (fun (r, p) ->
       (p = T.Relaxed && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
       (p = T.Linear && T.cap_linear r c1)) *)
-    (fun (r, p) ->
+(*    (fun (r, p) ->
       (p = T.Relaxed && T.cap_relaxed r c1) ||
       (p = T.Linear && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
-      (p = T.Used && T.cap r c1))
+      (p = T.Used && T.cap r c1))*)
+    (fun (r, p) -> T.cap r c1)
     c2
 
 (* Construction CIN *)
@@ -67,10 +68,10 @@ let rec rgn_of_mty mty =
   |S.TFun(mty_l, mty2, r) ->
     List.fold_left
       (fun out mty1 -> StrMap.union merge_rgn out (rgn_of_mty mty1))
-      (add_rgn r T.Used (rgn_of_mty mty2))
+      (add_rgn r T.Relaxed (rgn_of_mty mty2))
       mty_l
-  |S.TCouple(mty1, mty2, r) -> StrMap.union merge_rgn (rgn_of_mty mty1) (add_rgn r T.Used (rgn_of_mty mty2))
-  |S.TList(mty1, r) |S.TRef(mty1, r) -> add_rgn r T.Used (rgn_of_mty mty1)
+  |S.TCouple(mty1, mty2, r) -> StrMap.union merge_rgn (rgn_of_mty mty1) (add_rgn r T.Relaxed (rgn_of_mty mty2))
+  |S.TList(mty1, r) |S.TRef(mty1, r) -> add_rgn r T.Relaxed (rgn_of_mty mty1)
   |S.THnd(r) -> StrMap.singleton r T.Linear
 
 let rgn_of_ty (S.TPoly(_, _, mty)) = rgn_of_mty mty
@@ -92,6 +93,8 @@ let rec rgn_of t =
     )
     (rgn_of_ty (S.get_type t))
 (* **** *)
+
+let generalize_cap c c_ref = T.cap_map (fun (r, cap) -> (r, try T.cap_find r c_ref with Not_found -> cap)) c
 
 
 (* Instanciation of regions in application *)
@@ -271,7 +274,7 @@ let rec check_term env g c t =
     print_cap cin' "cin'";
     let cout' = T.diff_cap cout (T.cap_of r_l) in
     print_cap cout' "cout'";
-    if T.cap r c2 && g2 = g1 && unrestricted cin g2 then
+    if T.cap r c2 && g2 = g1 && unrestricted cin then
       T.mk_term
         (T.Fun(f, arg_l, t1', t2', pot))
         (T.TPoly(a_l, r_l, T.TFun(List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f))),

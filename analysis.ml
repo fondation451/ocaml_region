@@ -27,6 +27,7 @@ and ressource =
   |RNIL
   |RREF
   |RHND
+  |RCLO
 
 [@@deriving show { with_path = false }]
 
@@ -54,3 +55,4 @@ let cost_of ress =
   |RNIL -> 0
   |RREF -> 1
   |RHND -> 1
+  |RCLO -> 1
