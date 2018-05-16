@@ -36,7 +36,7 @@ let fr_mty mty =
     |T.TList(mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
 
-let unrestricted c = T.cap_forall (fun (_, cap) -> cap = T.Relaxed) c
+let unrestricted c g = T.cap_forall (fun (r, cap) -> not (T.gamma_mem r g) || (cap = T.Relaxed)) c
 
 let sub_cap c1 c2 =
   T.cap_forall
@@ -51,47 +51,36 @@ let sub_cap c1 c2 =
     c2
 
 (* Construction CIN *)
-let sum_rgn_p p1 p2 =
-  match p1, p2 with
-  |T.Used, _ -> p2
-  |_, T.Used -> p1
-  |_ -> T.Relaxed
-
-let add_rgn r p c =
-  StrMap.add r (try sum_rgn_p (StrMap.find r c) p with Not_found -> p) c
-
-let merge_rgn _ _ _ = Some(T.Relaxed)
-
-let rec rgn_of_mty mty =
-  match mty with
-  |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> StrMap.empty
-  |S.TFun(mty_l, mty2, r) ->
-    List.fold_left
-      (fun out mty1 -> StrMap.union merge_rgn out (rgn_of_mty mty1))
-      (add_rgn r T.Relaxed (rgn_of_mty mty2))
-      mty_l
-  |S.TCouple(mty1, mty2, r) -> StrMap.union merge_rgn (rgn_of_mty mty1) (add_rgn r T.Relaxed (rgn_of_mty mty2))
-  |S.TList(mty1, r) |S.TRef(mty1, r) -> add_rgn r T.Relaxed (rgn_of_mty mty1)
-  |S.THnd(r) -> StrMap.singleton r T.Linear
-
-let rgn_of_ty (S.TPoly(_, _, mty)) = rgn_of_mty mty
-
 let rec rgn_of t =
-  StrMap.union merge_rgn
-  (
-      match S.get_term t with
-      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrMap.empty
-      |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1)
-      |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
-        rgn_of t1
-      |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
-      |S.Fun(_, _, t1, t2, _) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
-        StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
-      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
-        StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
-      |S.App(t1, t_l) -> List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
-    )
-    (rgn_of_ty (S.get_type t))
+  let merge_rgn _ _ _ = Some(T.Relaxed) in
+  match S.get_term t with
+  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrMap.empty
+  |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1)
+  |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
+    rgn_of t1
+  |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
+  |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
+    StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
+  |S.If(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
+    StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
+  |S.App(t1, t_l) -> List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
+  |S.Fun(_, _, t1, t2, _) |S.Ref(t1, t2) ->
+    StrMap.union
+      merge_rgn
+      (rgn_of t1)
+      (match S.get_type t2 with
+       |S.TPoly(_, _, S.THnd(r)) -> StrMap.singleton r T.Relaxed
+       |_ -> assert false)
+  |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
+    StrMap.union
+      merge_rgn
+      (rgn_of t1)
+      (StrMap.union
+        merge_rgn
+        (rgn_of t2)
+        (match S.get_type t3 with
+         |S.TPoly(_, _, S.THnd(r)) -> StrMap.singleton r T.Relaxed
+         |_ -> assert false))
 (* **** *)
 
 let generalize_cap c c_ref = T.cap_map (fun (r, cap) -> (r, try T.cap_find r c_ref with Not_found -> cap)) c
@@ -134,6 +123,7 @@ let rec replace_rgn s mty =
   |T.TRef(mty1, r) -> T.TRef(replace_rgn s mty1, replace s r)
 
 let rec replace_rgn_ty s (T.TPoly(_, _, mty)) = replace_rgn s mty
+
 
 let rec instance_of_rgn r mty1 mty2 =
   match mty1, mty2 with
@@ -204,38 +194,39 @@ let str_of_cap cap =
   match cap with
   |T.Linear -> "1"
   |T.Relaxed -> "+"
-  |T.Used -> "0"
 
 let print_cap c name =
   Printf.printf "%s : \n%s\n"
     name
     ("[" ^ (List.fold_left (fun out (r, cap) -> Printf.sprintf "%s, (%s, %s)" out r (str_of_cap cap)) "" c) ^ "]")
 
+let check_rgn r c =
+  Printf.printf "CHECK_RGN OF %s !!!!!\n\n" r;
+  if T.cap_linear r c then
+    T.remove_cap r c, T.effects_of [T.ERead(r)]
+  else if T.cap_relaxed r c then
+    c, T.effects_of [T.ERead(r)]
+  else
+    raise (T.Check_Error (Printf.sprintf "No capabilities for region handler %s" r))
+
 let rec check_term env g c t =
+  print_cap c "c";
   Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);
   let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in
+  let g' = List.fold_left (fun out r -> T.gamma_add r out) g r_l in
   match te, ty with
   |S.Unit, S.TUnit -> T.mk_term T.Unit (T.TPoly(a_l, r_l, T.TUnit)), g, c, T.empty_effects
   |S.Bool(b), S.TBool -> T.mk_term (T.Bool(b)) (T.TPoly(a_l, r_l, T.TBool)), g, c, T.empty_effects
   |S.Int(i), S.TInt -> T.mk_term (T.Int(i)) (T.TPoly(a_l, r_l, T.TInt)), g, c, T.empty_effects
   |S.Var(v), _ -> begin
-    print_cap c "c";
+    print_cap c "VAR__c";
     Printf.printf "CHECKING OF %s\n\n\n" v;
     let ty' = try StrMap.find v env with Not_found -> T.TPoly(a_l, r_l, lift_type ty) in
     let T.TPoly(_, _, mty') = ty' in
     match mty' with
-    |T.THnd(r) ->
-      if T.cap_linear r c then
-        T.mk_term (T.Var(v)) ty', g, T.add_cap r T.Used c, T.effects_of [T.ERead(r)]
-      else if T.cap_relaxed r c then
-        T.mk_term (T.Var(v)) ty', g, c, T.effects_of [T.ERead(r)]
-      else if T.cap_used r c then
-        T.mk_term (T.Var(v)) ty', g, T.remove_cap r c, T.effects_of [T.ERead(r)]
-      else
-        raise (T.Check_Error (Printf.sprintf "No capabilities for region handler %s" r))
-    |T.TFun(_, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, r) |T.TRef(_, r) ->
-      if T.cap r c then
+    |T.THnd(r) |T.TFun(_, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, r) |T.TRef(_, r) ->
+      if T.gamma_mem r g' then
         T.mk_term (T.Var(v)) ty', g, c, T.effects_of [T.ERead(r)]
       else
         raise (T.Check_Error (Printf.sprintf "No capabilities for access to region %s" r))
@@ -259,6 +250,7 @@ let rec check_term env g c t =
     T.mk_term (T.Comp(comp, t1', t2')) (T.TPoly(a_l, r_l, T.TBool)), g2, c2, phi
   |S.Fun(f, arg_l, t1, t2, pot), S.TFun(mty_l, mty1, r) ->
     let t2', g2, c2, phi2 = check_term env g c t2 in
+    let c3, phi3 = check_rgn r c2 in
     let env' =
       List.fold_left2
         (fun out x mty ->
@@ -276,11 +268,11 @@ let rec check_term env g c t =
     print_cap cin' "cin'";
     let cout' = T.diff_cap cout (T.cap_of r_l) in
     print_cap cout' "cout'";
-    if T.cap r c2 && g2 = g1 && unrestricted cin then
+    if unrestricted cin g2 then
       T.mk_term
         (T.Fun(f, arg_l, t1', t2', pot))
         (T.TPoly(a_l, r_l, T.TFun(List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f))),
-      g2, c2, T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2
+      g2, c3, T.merge_effects (T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2) phi3
     else
       raise (T.Check_Error (Printf.sprintf "Error with function region behaviour %s" r))
   |S.App(t1, t_l), _ -> begin
@@ -302,12 +294,14 @@ let rec check_term env g c t =
     Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_ty'');
     match T.get_type t1'' with
     |T.TPoly(a_l_f, r_l_f, T.TFun(arg_mty_l, mty_res, mty_r, cin, cout, phie)) as f_ty ->
-      Printf.printf "C2 : %s\n\n" (T.show_capabilities c2);
+      print_cap c2 "c2";
+      print_cap cin "cin";
+      print_cap cout "cout";
 (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
       if sub_cap c2 cin then
         T.mk_term (T.App(s', t1'', t_l')) (T.TPoly(a_l, r_l, lift_type ty)),
         g2,
-        T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
+        T.union_cap (T.diff_cap c2 cin) cout,
         T.merge_effects phie (T.merge_effects phi1 phi2)
       else
         raise (T.Check_Error (Printf.sprintf "Function call : capabilities not sub cap of cin"))
@@ -316,12 +310,12 @@ let rec check_term env g c t =
   |S.If(t1, t2, t3), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
-    let t3', g3, c3, phi3 = check_term env g2 c2 t3 in
+    let t3', g3, c3, phi3 = check_term env g1 c1 t3 in
     T.mk_term (T.If(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c3, T.merge_effects phi1 (T.merge_effects phi2 phi3)
   |S.Match(t_match, t_nil, x, xs, t_cons), _ ->
     let t_match', g1, c1, phi1 = check_term env g c t_match in
     let t_nil', g2, c2, phi2 = check_term env g1 c1 t_nil in
-    let t_cons', g3, c3, phi3 = check_term env g2 c2 t_cons in
+    let t_cons', g3, c3, phi3 = check_term env g1 c1 t_cons in
     T.mk_term
       (T.Match(t_match', t_nil', x, xs, t_cons'))
       (T.TPoly(a_l, r_l, lift_type ty)),
@@ -338,12 +332,13 @@ let rec check_term env g c t =
     let t1', g1, c1, phi1 = check_term env' g c t1 in
     let t2', g2, c2, phi2 = check_term env' g1 c1 t2 in
     T.mk_term (T.Letrec(x, t1', t2')) (T.TPoly(a_l, r_l, lift_type ty)), g2, c2, T.merge_effects phi1 phi2
-  |S.Pair(t1, t2, t3), _ ->
+  |S.Pair(t1, t2, t3), S.TCouple(_, _, r) ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
     let t3', g3, c3, phi3 = check_term env g2 c2 t3 in
-    let phi = T.merge_effects phi1 (T.merge_effects phi2 phi3) in
-    T.mk_term (T.Pair(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c3, phi
+    let c4, phi4 = check_rgn r c3 in
+    let phi = T.merge_effects phi4 (T.merge_effects phi1 (T.merge_effects phi2 phi3)) in
+    T.mk_term (T.Pair(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c4, phi
   |S.Fst(t1), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     T.mk_term (T.Fst(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
@@ -358,12 +353,13 @@ let rec check_term env g c t =
     T.mk_term (T.Tl(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
   |S.Nil, S.TList(_, r) ->
     T.mk_term T.Nil (T.TPoly(a_l, r_l, lift_type ty)), g, c, T.empty_effects
-  |S.Cons(t1, t2, t3), _ ->
+  |S.Cons(t1, t2, t3), S.TList(_, r) ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
     let t3', g3, c3, phi3 = check_term env g2 c2 t3 in
-    let phi = T.merge_effects phi1 (T.merge_effects phi2 phi3) in
-    T.mk_term (T.Cons(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c3, phi
+    let c4, phi4 = check_rgn r c3 in
+    let phi = T.merge_effects phi4 (T.merge_effects phi1 (T.merge_effects phi2 phi3)) in
+    T.mk_term (T.Cons(t1', t2', t3')) (T.TPoly(a_l, r_l, lift_type ty)), g3, c4, phi
   |S.Ref(t1, t2), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
@@ -377,14 +373,14 @@ let rec check_term env g c t =
   |S.Deref(t1), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     T.mk_term (T.Deref(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
-  |S.Newrgn, S.THnd(r) -> T.mk_term T.Newrgn (T.TPoly(a_l, r_l, T.THnd(r))), g, T.add_cap r T.Linear c, T.empty_effects
+  |S.Newrgn, S.THnd(r) -> T.mk_term T.Newrgn (T.TPoly(a_l, r_l, T.THnd(r))), T.gamma_add r g, T.add_cap r T.Linear c, T.empty_effects
   |S.Aliasrgn(t1, t2), _ -> begin
     let t1', g1, c1, phi1 = check_term env g c t1 in
-    print_cap c "c";
-    print_cap c1 "c1";
+(*    print_cap c "c";
+    print_cap c1 "c1";*)
     match T.get_type t1' with
     |T.TPoly(_, _, T.THnd(r)) ->
-      if T.cap_used r c1 then
+      if T.cap r c1 then
         let t2', g2, c2, phi2 = check_term env g (T.add_cap r T.Relaxed c1) t2 in
         T.mk_term (T.Aliasrgn(t1', t2')) (T.TPoly(a_l, r_l, lift_type ty)), g2, T.add_cap r T.Linear c2, T.merge_effects phi1 phi2
       else
@@ -395,7 +391,7 @@ let rec check_term env g c t =
       let t1', g1, c1, phi1 = check_term env g c t1 in
       match T.get_type t1' with
       |T.TPoly(_, _, T.THnd(r)) when not (T.cap_relaxed r c1) ->
-        T.mk_term (T.Freergn(t1')) (T.TPoly(a_l, r_l, T.TUnit)), g1, T.remove_cap r c1, phi1
+        T.mk_term (T.Freergn(t1')) (T.TPoly(a_l, r_l, T.TUnit)), T.gamma_remove r g1, T.remove_cap r c1, phi1
       |_ -> assert false
   end
   |S.Sequence(t1, t2), _ ->

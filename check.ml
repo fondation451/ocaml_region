@@ -22,7 +22,6 @@ and regions = Region.regions
 and capability =
   |Linear
   |Relaxed
-  |Used
 
 and capabilities = (regions * capability) list
 
@@ -137,4 +136,7 @@ let cap r c = List.mem_assoc r c
 let cap_find r c = List.assoc r c
 let cap_linear r c = try List.assoc r c = Linear with Not_found -> false
 let cap_relaxed r c = try List.assoc r c = Relaxed with Not_found -> false
-let cap_used r c = try List.assoc r c = Used with Not_found -> false
+
+let gamma_remove r g = List.filter (fun r' -> r' <> r) g
+let gamma_add r g = r::(gamma_remove r g)
+let gamma_mem r g = List.mem r g
