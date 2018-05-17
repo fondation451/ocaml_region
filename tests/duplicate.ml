@@ -3,6 +3,9 @@ let rgn1 = newrgn () in
 let rgn2 = newrgn () in
 let rgn3 = newrgn () in
 let rgn4 = newrgn () in
+let rgn5 = newrgn () in
+let rgn6 = newrgn () in
+let rgn7 = newrgn () in
 
 aliasrgn rgn1 in
 
@@ -20,12 +23,15 @@ in
 
 let l = [4 ; 5 ; 6] @ rgn1 in
 
-aliasrgn rgn2 in
-aliasrgn rgn3 in
-aliasrgn rgn4 in
+(*aliasrgn rgn2 in*)
+(*aliasrgn rgn3 in*)
+(*aliasrgn rgn4 in*)
 begin
-  duplicate l rgn2 rgn3 rgn4;
+  duplicate l rgn2 rgn1 rgn1;
+(*  freergn rgn2;
+  freergn rgn3;
+  freergn rgn4;*)
   let dump = [4 ; 5 ; 6] @ rgn1 in
-  duplicate l rgn2 rgn3 rgn4;
+  duplicate l rgn5 rgn3 rgn4;
   ()
 end

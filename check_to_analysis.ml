@@ -123,14 +123,14 @@ let convert_to_simplex m vars lin_prog =
   loop_line (loop_var sim vars) lin_prog
 
 let find_rgn_sub r s =
-  try
-    fst (List.find (fun (r1, r2) -> r2 = r) s)
-  with Not_found ->
-    Printf.printf "Not subs %s, should be pass ? %b\n\n" r (List.exists (fun (r1, r2) -> r1 = r) s);
+  let out = List.map fst (List.filter (fun (r1, r2) -> r2 = r) s) in
+  match out with
+  |[] ->
     if List.exists (fun (r1, r2) -> r1 = r) s then
       raise Not_found
     else
-      r
+      [r]
+  |_ -> out
 
 let no_side_effect ty =
   match ty with
@@ -272,6 +272,7 @@ let rec verify_r f arg_l (r, (pc, pd)) t =
 let env = Hashtbl.create 10
 
 let add_fun_pot r f v = Hashtbl.add env (r, f) v
+let mem_fun_pot r f = Hashtbl.mem env (r, f)
 let find_fun_pot r f = Hashtbl.find env (r, f)
 let remove_fun_pot r f = Hashtbl.remove env (r, f)
 
@@ -357,29 +358,38 @@ let process_r r_l cr_l t =
       let out = List.fold_left (fun out t2 -> process_t t2 out) out t_l in
       StrMap.mapi
         (fun r (lines, n'') ->
-          let new_lines =
+          let new_lines, n'' =
             let n' = List.assoc r l_n' in
             try
-              Printf.printf "APPICATION SUB REGION %s -> %s\n" r (find_rgn_sub r s);
-              let cr, dr, fun_lines = find_fun_pot (find_rgn_sub r s) (fun_name t1) in
-              let cr', r_cr' = instanciate_size cr t_l [] in
-              let dr', r_dr' = instanciate_size dr t_l [] in
-              let fun_lines, sub =
-                fresh_names
-                  (
-                    List.fold_left
-                      (fun fun_lines r ->
-                        let rlines, _ = StrMap.find r out in
-                        List.rev_append rlines fun_lines)
-                      fun_lines
-                      (List.rev_append r_cr' r_dr')
-                  ) vars StrMap.empty
+              let r_sub_l = List.filter (fun r_sub -> mem_fun_pot r_sub (fun_name t1)) (find_rgn_sub r s) in
+              Printf.printf "APPICATION SUB REGION %s -> %s\n" r ("[" ^ (List.fold_left (fun out r -> Printf.sprintf "%s, %s" out r) "" r_sub_l) ^ "]");
+              let out1, n', n'' = List.fold_left
+                (fun (out1, n', n'') r_sub ->
+                  let cr, dr, fun_lines = find_fun_pot r_sub (fun_name t1) in
+                  let cr', r_cr' = instanciate_size cr t_l [] in
+                  let dr', r_dr' = instanciate_size dr t_l [] in
+                  let fun_lines, sub =
+                    fresh_names
+                      (
+                        List.fold_left
+                          (fun fun_lines r ->
+                            let rlines, _ = StrMap.find r out in
+                            List.rev_append rlines fun_lines)
+                          fun_lines
+                          (List.rev_append r_cr' r_dr')
+                      ) vars StrMap.empty
+                  in
+                  let cr'', sub = fresh_names_p cr' vars sub in
+                  let dr'', sub = fresh_names_p dr' vars sub in
+                  Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr'') (H.show_pot dr'');
+                  (List.rev_append ((H.PAdd(H.PAdd(H.PAdd(n'', cr''), H.PMin n'), H.PMin dr''))::fun_lines) out1,
+                  n'',
+                  H.PPot(H.mk_pot vars)))
+                ([], n', n'')
+                r_sub_l
               in
-              let cr'', sub = fresh_names_p cr' vars sub in
-              let dr'', sub = fresh_names_p dr' vars sub in
-              Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr) (H.show_pot dr);
-              (H.PAdd(H.PAdd(H.PAdd(n'', cr''), H.PMin n'), H.PMin dr''))::fun_lines
-            with Not_found -> if n'' <> n' then [H.PAdd(n'', H.PMin n')] else []
+              out1, n'
+            with Not_found -> if n'' <> n' then [H.PAdd(n'', H.PMin n')], n'' else [], n''
           in
           List.append new_lines lines, n'')
         out
