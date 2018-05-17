@@ -23,15 +23,12 @@ in
 
 let l = [4 ; 5 ; 6] @ rgn1 in
 
-(*aliasrgn rgn2 in*)
-(*aliasrgn rgn3 in*)
-(*aliasrgn rgn4 in*)
+aliasrgn rgn2 in
+aliasrgn rgn3 in
+aliasrgn rgn4 in
 begin
   duplicate l rgn2 rgn1 rgn1;
-(*  freergn rgn2;
-  freergn rgn3;
-  freergn rgn4;*)
   let dump = [4 ; 5 ; 6] @ rgn1 in
-  duplicate l rgn5 rgn3 rgn4;
+  duplicate l rgn2 rgn3 rgn4;
   ()
 end

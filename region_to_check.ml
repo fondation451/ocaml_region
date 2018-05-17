@@ -40,14 +40,14 @@ let unrestricted c g = T.cap_forall (fun (r, cap) -> not (T.gamma_mem r g) || (c
 
 let sub_cap c1 c2 =
   T.cap_forall
-(*    (fun (r, p) ->
-      (p = T.Relaxed && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
-      (p = T.Linear && T.cap_linear r c1)) *)
+    (fun (r, p) ->
+      (p = T.Relaxed && T.cap_relaxed r c1) ||
+      (p = T.Linear && T.cap r c1))
 (*    (fun (r, p) ->
       (p = T.Relaxed && T.cap_relaxed r c1) ||
       (p = T.Linear && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
       (p = T.Used && T.cap r c1))*)
-    (fun (r, p) -> T.cap r c1)
+(*    (fun (r, p) -> T.cap r c1)*)
     c2
 
 (* Construction CIN *)
@@ -200,6 +200,11 @@ let print_cap c name =
     name
     ("[" ^ (List.fold_left (fun out (r, cap) -> Printf.sprintf "%s, (%s, %s)" out r (str_of_cap cap)) "" c) ^ "]")
 
+let print_gamma g name =
+  Printf.printf "%s : \n%s\n"
+    name
+    ("[" ^ (List.fold_left (fun out r -> Printf.sprintf "%s, %s" out r) "" g) ^ "]")
+
 let check_rgn r c =
   Printf.printf "CHECK_RGN OF %s !!!!!\n\n" r;
   if T.cap_linear r c then
@@ -221,6 +226,7 @@ let rec check_term env g c t =
   |S.Int(i), S.TInt -> T.mk_term (T.Int(i)) (T.TPoly(a_l, r_l, T.TInt)), g, c, T.empty_effects
   |S.Var(v), _ -> begin
     print_cap c "VAR__c";
+    print_gamma g "VAR__g";
     Printf.printf "CHECKING OF %s\n\n\n" v;
     let ty' = try StrMap.find v env with Not_found -> T.TPoly(a_l, r_l, lift_type ty) in
     let T.TPoly(_, _, mty') = ty' in
@@ -301,7 +307,7 @@ let rec check_term env g c t =
       if sub_cap c2 cin then
         T.mk_term (T.App(s', t1'', t_l')) (T.TPoly(a_l, r_l, lift_type ty)),
         g2,
-        T.union_cap (T.diff_cap c2 cin) cout,
+        T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
         T.merge_effects phie (T.merge_effects phi1 phi2)
       else
         raise (T.Check_Error (Printf.sprintf "Function call : capabilities not sub cap of cin"))
