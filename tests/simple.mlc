@@ -1,0 +1,25 @@
+(*
+  Nicolas ASSOUAD
+
+  Simple test
+
+*)
+
+let r1 = newrgn () in
+begin
+  aliasrgn r1 in
+  let rec g x =
+  { r1: rcons -> 0 }
+    x
+  @
+    r1
+  in
+  let rec f x =
+    begin g x; g x end
+  @
+    r1
+  in
+  f 5;
+  freergn r1;
+  ()
+end

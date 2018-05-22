@@ -35,6 +35,10 @@
       "match", MATCH;
       "with", WITH;
       "size", SIZE;
+      "rpair", RPAIR;
+      "rcons", RCONS;
+      "rref", RREF;
+      "rhnd", RHND;
     ] in
     h
 

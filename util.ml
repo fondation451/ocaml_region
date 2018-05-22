@@ -26,3 +26,21 @@ let mk_rgn = let cpt = ref (-1) in fun () -> incr cpt;
   let out = "rgn"^(string_of_int !cpt) in Printf.printf "###################### CREATION %s ###################" out; out
 
 let strmap_diff m1 m2 = StrMap.filter (fun k v -> StrMap.mem k m2) m1
+
+type ressource =
+  |RPAIR
+  |RCONS
+  |RNIL
+  |RREF
+  |RHND
+  |RCLO
+[@@deriving show { with_path = false }]
+
+let cost_of ress =
+  match ress with
+  |RPAIR -> 2
+  |RCONS -> 2
+  |RNIL -> 0
+  |RREF -> 1
+  |RHND -> 1
+  |RCLO -> 1

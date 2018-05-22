@@ -3,7 +3,6 @@
 %{
 
   open Parsing
-  open Util
   open Ast
 
   let loc() = symbol_start_pos(), symbol_end_pos()
@@ -17,6 +16,7 @@
 %token MATCH WITH CASE
 %token SIZE COLON
 %token LT GT LE GE NOT_EQUAL
+%token RPAIR RCONS RREF RHND
 %token EOF
 %token <int> INTEGER
 %token <string> IDENT
@@ -108,6 +108,10 @@ statement_term:
 ;
 
 pot_term:
+  |RPAIR { PLit(Util.cost_of Util.RPAIR) }
+  |RCONS { PLit(Util.cost_of Util.RCONS) }
+  |RREF { PLit(Util.cost_of Util.RREF) }
+  |RHND { PLit(Util.cost_of Util.RHND) }
   |SIZE LPAR v = IDENT RPAR { PSize(v) }
   |i = INTEGER { PLit(i) }
   |p1 = pot_term PLUS p2 = pot_term { PAdd(p1, p2) }

@@ -21,14 +21,6 @@ and fun_pot_desc = Check.fun_pot_desc
 
 and integer_prog = pot list
 
-and ressource =
-  |RPAIR
-  |RCONS
-  |RNIL
-  |RREF
-  |RHND
-  |RCLO
-
 [@@deriving show { with_path = false }]
 
 let mk_pot_with_name name s =
@@ -47,12 +39,3 @@ let mk_pot' str s =
   let out = str^(string_of_int !cpt) in
   s := StrSet.add out !s;
   out
-
-let cost_of ress =
-  match ress with
-  |RPAIR -> 2
-  |RCONS -> 2
-  |RNIL -> 0
-  |RREF -> 1
-  |RHND -> 1
-  |RCLO -> 1

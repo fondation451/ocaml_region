@@ -27,8 +27,8 @@ let options = [
 let () =
   Arg.parse options (set_file input_file) usage;
 
-  if not (Filename.check_suffix !input_file ".ml") then begin
-    eprintf "The input file must be a .ml\n@?";
+  if not (Filename.check_suffix !input_file ".mlc") then begin
+    eprintf "The input file must be a .mlc\n@?";
     Arg.usage options usage;
     exit 1
   end;

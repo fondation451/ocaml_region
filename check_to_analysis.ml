@@ -297,8 +297,7 @@ let process_r r_l cr_l t =
     let te = S.get_term t in
     let ty = S.get_type t in
     match te with
-    |S.Unit |S.Bool(_) |S.Int(_) |S.Nil -> out
-    |S.Var(_) ->
+    |S.Unit |S.Bool(_) |S.Int(_) |S.Nil |S.Var(_) ->
       StrMap.map
         (fun (lines, n) ->
           let m = H.PPot(H.mk_pot vars) in
@@ -315,8 +314,7 @@ let process_r r_l cr_l t =
               let m = H.PPot(H.mk_pot' "fun" vars) in
               let fv_var = fv_term t1 in
               let nb_fv = StrSet.cardinal (StrSet.remove f (List.fold_left (fun out arg -> StrSet.remove arg out) fv_var arg_l)) in
-              let const = nb_fv * (H.cost_of H.RCLO) in
-              let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(nb_fv * (H.cost_of H.RCLO))) in
+              let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(nb_fv * (cost_of RCLO))) in
               new_line::lines, m
             else
               lines, n)
@@ -366,8 +364,8 @@ let process_r r_l cr_l t =
               let out1, n', n'' = List.fold_left
                 (fun (out1, n', n'') r_sub ->
                   let cr, dr, fun_lines = find_fun_pot r_sub (fun_name t1) in
-                  let cr', r_cr' = instanciate_size cr t_l [] in
-                  let dr', r_dr' = instanciate_size dr t_l [] in
+                  let cr, r_cr = instanciate_size cr t_l [] in
+                  let dr, r_dr = instanciate_size dr t_l [] in
                   let fun_lines, sub =
                     fresh_names
                       (
@@ -376,13 +374,13 @@ let process_r r_l cr_l t =
                             let rlines, _ = StrMap.find r out in
                             List.rev_append rlines fun_lines)
                           fun_lines
-                          (List.rev_append r_cr' r_dr')
+                          (List.rev_append r_cr r_dr)
                       ) vars StrMap.empty
                   in
-                  let cr'', sub = fresh_names_p cr' vars sub in
-                  let dr'', sub = fresh_names_p dr' vars sub in
-                  Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr'') (H.show_pot dr'');
-                  (List.rev_append ((H.PAdd(H.PAdd(H.PAdd(n'', cr''), H.PMin n'), H.PMin dr''))::fun_lines) out1,
+                  let cr, sub = fresh_names_p cr vars sub in
+                  let dr, sub = fresh_names_p dr vars sub in
+                  Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr) (H.show_pot dr);
+                  (List.rev_append ((H.PAdd(H.PAdd(H.PAdd(n'', cr), H.PMin n'), H.PMin dr))::fun_lines) out1,
                   n'',
                   H.PPot(H.mk_pot vars)))
                 ([], n', n'')
@@ -415,7 +413,7 @@ let process_r r_l cr_l t =
         (fun r (lines, n) ->
           if on_rgn r ty then
             let m = H.PPot(H.mk_pot' "pair" vars) in
-            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(H.cost_of H.RPAIR)) in
+            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(cost_of RPAIR)) in
             new_line::lines, m
           else
             lines, n)
@@ -426,7 +424,7 @@ let process_r r_l cr_l t =
         (fun r (lines, n) ->
           if on_rgn r ty then
             let m = H.PPot(H.mk_pot' "cons" vars) in
-            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(H.cost_of H.RCONS)) in
+            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(cost_of RCONS)) in
             new_line::lines, m
           else
             lines, n)
@@ -439,7 +437,7 @@ let process_r r_l cr_l t =
         (fun r (lines, n) ->
           if on_rgn r ty then
             let m = H.PPot(H.mk_pot' "hnd" vars) in
-            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(H.cost_of H.RHND)) in
+            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(cost_of RHND)) in
             new_line::lines, m
           else
             lines, n)
