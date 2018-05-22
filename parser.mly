@@ -16,7 +16,7 @@
 %token MATCH WITH CASE
 %token SIZE COLON
 %token LT GT LE GE NOT_EQUAL
-%token RPAIR RCONS RREF RHND
+%token RPAIR RCONS RREF RHND LENGTH
 %token EOF
 %token <int> INTEGER
 %token <string> IDENT
@@ -113,6 +113,7 @@ pot_term:
   |RREF { PLit(Util.cost_of Util.RREF) }
   |RHND { PLit(Util.cost_of Util.RHND) }
   |SIZE LPAR v = IDENT RPAR { PSize(v) }
+  |LENGTH LPAR v = IDENT RPAR { PLen(v) }
   |i = INTEGER { PLit(i) }
   |p1 = pot_term PLUS p2 = pot_term { PAdd(p1, p2) }
   |MINUS p1 = pot_term { PMin(p1) }

@@ -11,7 +11,7 @@ type rcaml_type =
   |TAlpha of string
   |TFun of rcaml_type list * rcaml_type * regions
   |TCouple of rcaml_type * rcaml_type * regions
-  |TList of rcaml_type * regions
+  |TList of int * rcaml_type * regions
   |TRef of rcaml_type * regions
   |THnd of regions
 and rcaml_type_poly =
@@ -39,6 +39,7 @@ and pot =
   |PPot of string
   |PLit of int
   |PSize of int
+  |PLen of string
   |PAdd of pot * pot
   |PMin of pot
   |PMul of pot * pot

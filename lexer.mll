@@ -39,6 +39,7 @@
       "rcons", RCONS;
       "rref", RREF;
       "rhnd", RHND;
+      "_length", LENGTH;
     ] in
     h
 

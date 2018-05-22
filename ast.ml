@@ -20,6 +20,7 @@ and pot =
   |PPot of string
   |PLit of int
   |PSize of string
+  |PLen of string
   |PAdd of pot * pot
   |PMin of pot
   |PMul of pot * pot

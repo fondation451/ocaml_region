@@ -12,7 +12,7 @@ let rec lift_type mty =
   |S.TFun(mty_l, mty1, r) ->
     T.TFun(List.map lift_type mty_l, lift_type mty1, r, T.empty_capabilities, T.empty_capabilities, T.empty_effects)
   |S.TCouple(mty1, mty2, r) -> T.TCouple(lift_type mty1, lift_type mty2, r)
-  |S.TList(mty1, r) -> T.TList(lift_type mty1, r)
+  |S.TList(i, mty1, r) -> T.TList(lift_type mty1, r)
   |S.TRef(mty1, r) -> T.TRef(lift_type mty1, r)
   |S.THnd(r) -> T.THnd(r)
 
@@ -215,8 +215,8 @@ let check_rgn r c =
     raise (T.Check_Error (Printf.sprintf "No capabilities for region handler %s" r))
 
 let rec check_term env g c t =
-  print_cap c "c";
-  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);
+(*  print_cap c "c";
+  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);*)
   let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in
   let g' = List.fold_left (fun out r -> T.gamma_add r out) g r_l in
@@ -357,9 +357,9 @@ let rec check_term env g c t =
   |S.Tl(t1), _ ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     T.mk_term (T.Tl(t1')) (T.TPoly(a_l, r_l, lift_type ty)), g1, c1, phi1
-  |S.Nil, S.TList(_, r) ->
+  |S.Nil, S.TList(_, _, r) ->
     T.mk_term T.Nil (T.TPoly(a_l, r_l, lift_type ty)), g, c, T.empty_effects
-  |S.Cons(t1, t2, t3), S.TList(_, r) ->
+  |S.Cons(t1, t2, t3), S.TList(_, _, r) ->
     let t1', g1, c1, phi1 = check_term env g c t1 in
     let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
     let t3', g3, c3, phi3 = check_term env g2 c2 t3 in

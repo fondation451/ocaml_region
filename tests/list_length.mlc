@@ -1,0 +1,20 @@
+(*
+  Nicolas ASSOUAD
+
+  Test Length comprehension
+
+*)
+
+let rgn0 = newrgn () in
+let rgn1 = newrgn () in
+begin
+  aliasrgn rgn0 in
+  aliasrgn rgn1 in
+
+  let l1 = [[1;1;1;1;2;3] @ rgn1 ; [1;2;3;4] @ rgn1 ; [1;2] @ rgn1] @ rgn0 in
+  begin
+    hd l1;
+    tl l1;
+    ()
+  end
+end
