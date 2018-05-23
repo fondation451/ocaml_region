@@ -89,7 +89,6 @@ let rec list_length t env =
   |T.Let(x, t1, t2) |T.Letrec(x, t1, t2) ->
     let T.TPoly(_, _, mty1) = T.get_type t1 in
     list_length t2 (StrMap.add x mty1 env)
-    
   |T.Fst(t1) ->
     let T.TPoly(_, _, T.TCouple(mty1, _, _)) = T.get_type t1 in
     list_length_mty mty1
@@ -131,17 +130,13 @@ let rec convert_term t env =
             (fun out x x_mty -> StrMap.add x (convert_mty x_mty None) out)
             env arg_l arg_l_mty
         in
-        T.Fun
-          (
-            f,
-            arg_l,
-            convert_term t1 env',
-            convert_term t2 env,
-            convert_fun_pot
-              f_pot
-              env'
-              (List.mapi (fun i v -> v, i) arg_l)
-          )
+        T.Fun(
+          f,
+          arg_l,
+          convert_term t1 env',
+          convert_term t2 env,
+          convert_fun_pot f_pot env' (List.mapi (fun i v -> v, i) arg_l)
+        )
       |_ -> assert false
     end
     |S.App(t1, t_l) -> T.App(convert_term t1 env, List.map (fun t2 -> convert_term t2 env) t_l)
