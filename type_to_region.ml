@@ -5,30 +5,30 @@ module T = Region
 
 let region_of r = match r with |S.RRgn(rgn) |S.RAlpha(rgn) -> rgn
 
-let rec convert_mty mty len =
+let rec convert_mty mty =
   match mty with
   |S.TInt -> T.TInt
   |S.TBool -> T.TBool
   |S.TUnit -> T.TUnit
   |S.TAlpha(a) -> T.TAlpha(a)
   |S.TFun(mty_l, mty2, r) ->
-    T.TFun(List.map (fun mty1 -> convert_mty mty1 len) mty_l, convert_mty mty2 len, region_of r)
-  |S.TCouple(mty1, mty2, r) -> T.TCouple(convert_mty mty1 len, convert_mty mty2 len, region_of r)
-  |S.TList(mty1, r) -> begin
-    match len with
-    |Some(i) -> T.TList(i, convert_mty mty1 len, region_of r)
-    |None -> T.TList(-1, convert_mty mty1 len, region_of r)
-  end
+    T.TFun(List.map (fun mty1 -> convert_mty mty1) mty_l, convert_mty mty2, region_of r)
+  |S.TCouple(mty1, mty2, r) -> T.TCouple(convert_mty mty1, convert_mty mty2, region_of r)
+  |S.TList(mty1, r) -> T.TList(-1, convert_mty mty1, region_of r)
 
-  |S.TRef(mty1, r) -> T.TRef(convert_mty mty1 len, region_of r)
+  |S.TRef(mty1, r) -> T.TRef(convert_mty mty1, region_of r)
   |S.THnd(r) -> T.THnd(region_of r)
 
-let convert_ty (S.TPoly(alpha_l, rgn_l, mty)) len = T.TPoly(alpha_l, rgn_l, convert_mty mty len)
+let convert_ty (S.TPoly(alpha_l, rgn_l, mty)) = T.TPoly(alpha_l, rgn_l, convert_mty mty)
 
 let region_of_mty mty =
   match mty with
   |T.THnd(r) -> r
   |_ -> assert false
+
+let region_of_ty (T.TPoly(_, _, mty)) = region_of_mty mty
+
+let mty_of (T.TPoly(_, _, mty)) = mty
 
 let rec convert_p p arg_l =
   match p with
@@ -39,7 +39,7 @@ let rec convert_p p arg_l =
   |S.PMin(p1) -> T.PMin(convert_p p1 arg_l)
   |S.PMul(p1, p2) -> T.PMul(convert_p p1 arg_l, convert_p p2 arg_l)
 
-let convert_pot (rgn, (pc, pd)) env arg_l = region_of_mty (StrMap.find rgn env), (convert_p pc arg_l, convert_p pd arg_l)
+let convert_pot (rgn, (pc, pd)) env arg_l = region_of_ty (StrMap.find rgn env), (convert_p pc arg_l, convert_p pd arg_l)
 
 let convert_pot_l pot_l env arg_l =
   let rec loop pot_l out =
@@ -58,116 +58,159 @@ let convert_fun_pot f_pot env arg_l =
   |None -> None
   |Some(pot_l) -> Some(convert_pot_l pot_l env arg_l)
 
-let list_length_mty mty =
-  match mty with
-  |T.TList(i, _, _) -> Some(i)
-  |_ -> None
-
-let rec list_length t env =
-  match T.get_term t with
-  |T.Unit |T.Bool(_) |T.Int(_) |T.Newrgn |T.Not(_) |T.Neg(_)
-  |T.Binop(_, _, _) |T.Comp(_, _, _) |T.Pair(_, _, _)
-  |T.Ref(_, _) |T.Assign(_, _) |T.Freergn(_)
-  |T.Fun(_, _, _, _, _) ->
-    None
-  |T.Var(v) -> (try list_length_mty (StrMap.find v env) with Not_found -> None)
-  |T.App(t1, t_l) ->
-    let T.TPoly(_, _, T.TFun(_, mty2, _)) = T.get_type t1 in
-    list_length_mty mty2
-  |T.If(t1, t2, t3) -> begin
-    match list_length t2 env, list_length t3 env with
-    |None, None -> None
-    |Some(out), None |None, Some(out) -> Some(out)
-    |Some(out1), Some(out2) -> Some(max out1 out2)
-  end
-  |T.Match(t_match, t_nil, x, xs, t_cons) -> begin
-    match list_length t_nil env, list_length t_cons env with
-    |None, None -> None
-    |Some(out), None |None, Some(out) -> Some(out)
-    |Some(out1), Some(out2) -> Some(max out1 out2)
-  end
-  |T.Let(x, t1, t2) |T.Letrec(x, t1, t2) ->
-    let T.TPoly(_, _, mty1) = T.get_type t1 in
-    list_length t2 (StrMap.add x mty1 env)
-  |T.Fst(t1) ->
-    let T.TPoly(_, _, T.TCouple(mty1, _, _)) = T.get_type t1 in
-    list_length_mty mty1
-  |T.Snd(t1) ->
-    let T.TPoly(_, _, T.TCouple(_, mty2, _)) = T.get_type t1 in
-    list_length_mty mty2
-  |T.Hd(t1) ->
-    let T.TPoly(_, _, T.TList(_, mty1, _)) = T.get_type t1 in
-    list_length_mty mty1
-  |T.Tl(t1) ->
-    let T.TPoly(_, _, T.TList(i, _, _)) = T.get_type t1 in
-    Some(i-1)
-  |T.Nil -> Some(0)
-  |T.Cons(t1, t2, t3) ->
-    let T.TPoly(_, _, T.TList(i, _, _)) = T.get_type t2 in
-    Some(i+1)
-  |T.Deref(t1) ->
-    let T.TPoly(_, _, T.TRef(mty1, _)) = T.get_type t1 in
-    list_length_mty mty1
-  |T.Aliasrgn(t1, t2) -> list_length t2 env
-  |T.Sequence(t1, t2) -> list_length t2 env
+let rec max_mty mty1 mty2 =
+  match mty1, mty2 with
+  |T.TFun(mty_l, mty2, r), T.TFun(mty_l', mty2', r') ->
+    T.TFun(List.map2 (fun mty1 mty1' -> max_mty mty1 mty1') mty_l mty_l',
+           max_mty mty2 mty2', r)
+  |T.TCouple(mty1, mty2, r), T.TCouple(mty1', mty2', r') ->
+    T.TCouple(max_mty mty1 mty1', max_mty mty2 mty2', r)
+  |T.TList(i, mty1, r), T.TList(i', mty1', r') ->
+    T.TList(max i i', max_mty mty1 mty1', r)
+  |T.TRef(mty1, r), T.TRef(mty1', r') -> T.TRef(max_mty mty1 mty1', r)
+  |_ -> mty1
 
 let rec convert_term t env =
-  let te =
-    match S.get_term t with
-    |S.Unit -> T.Unit
-    |S.Bool(b) -> T.Bool(b)
-    |S.Int(i) -> T.Int(i)
-    |S.Var(v) -> T.Var(v)
-    |S.Binop(op, t1, t2) -> T.Binop(op, convert_term t1 env, convert_term t2 env)
-    |S.Not(t1) -> T.Not(convert_term t1 env)
-    |S.Neg(t1) -> T.Neg(convert_term t1 env)
-    |S.Comp(cop, t1, t2) -> T.Comp(cop, convert_term t1 env, convert_term t2 env)
-    |S.Fun(f, arg_l, t1, t2, f_pot) -> begin
-      match S.get_type t with
-      |S.TPoly(_, _, S.TFun(arg_l_mty, _, _)) ->
-        let env' =
-          List.fold_left2
-            (fun out x x_mty -> StrMap.add x (convert_mty x_mty None) out)
-            env arg_l arg_l_mty
-        in
-        T.Fun(
-          f,
-          arg_l,
-          convert_term t1 env',
-          convert_term t2 env,
-          convert_fun_pot f_pot env' (List.mapi (fun i v -> v, i) arg_l)
-        )
-      |_ -> assert false
-    end
-    |S.App(t1, t_l) -> T.App(convert_term t1 env, List.map (fun t2 -> convert_term t2 env) t_l)
-    |S.If(t1, t2, t3) -> T.If(convert_term t1 env, convert_term t2 env, convert_term t3 env)
-    |S.Match(t_match, t_nil, x, xs, t_cons) ->
-      T.Match(convert_term t_match env, convert_term t_nil env, x, xs, convert_term t_cons env)
-    |S.Let(x, t1, t2) ->
-      let t1' = convert_term t1 env in
-      let T.TPoly(_, _, mty) = T.get_type t1' in
-      T.Let(x, t1', convert_term t2 (StrMap.add x mty env))
-    |S.Letrec(x, t1, t2) ->
-      let t1' = convert_term t1 env in
-      let T.TPoly(_, _, mty) = T.get_type t1' in
-      T.Letrec(x, t1', convert_term t2 (StrMap.add x mty env))
-    |S.Pair(t1, t2, t3) -> T.Pair(convert_term t1 env, convert_term t2 env, convert_term t3 env)
-    |S.Fst(t1) -> T.Fst(convert_term t1 env)
-    |S.Snd(t1) -> T.Snd(convert_term t1 env)
-    |S.Hd(t1) -> T.Hd(convert_term t1 env)
-    |S.Tl(t1) -> T.Tl(convert_term t1 env)
-    |S.Nil -> T.Nil
-    |S.Cons(t1, t2, t3) -> T.Cons(convert_term t1 env, convert_term t2 env, convert_term t3 env)
-    |S.Ref(t1, t2) -> T.Ref(convert_term t1 env, convert_term t2 env)
-    |S.Assign(t1, t2) -> T.Assign(convert_term t1 env, convert_term t2 env)
-    |S.Deref(t1) -> T.Deref(convert_term t1 env)
-    |S.Newrgn -> T.Newrgn
-    |S.Aliasrgn(t1, t2) -> T.Aliasrgn(convert_term t1 env, convert_term t2 env)
-    |S.Freergn(t1) -> T.Freergn(convert_term t1 env)
-    |S.Sequence(t1, t2) -> T.Sequence(convert_term t1 env, convert_term t2 env)
-    in
-    let len = list_length (T.mk_term te (T.TPoly([], [], T.TUnit))) env in
-    let ty = convert_ty (S.get_type t) len in
-    T.mk_term te ty
+  let (S.TPoly(a_l, r_l, mty)) = S.get_type t in
+  let te = S.get_term t in
+  let ty_of mty = T.TPoly(a_l, r_l, mty) in
+  match te with
+  |S.Unit -> T.mk_term T.Unit (ty_of T.TUnit)
+  |S.Bool(b) -> T.mk_term (T.Bool(b)) (ty_of T.TBool)
+  |S.Int(i) -> T.mk_term (T.Int(i)) (ty_of T.TInt)
+  |S.Var(v) ->
+    T.mk_term
+      (T.Var(v))
+      (try StrMap.find v env with Not_found -> ty_of (convert_mty mty))
+  |S.Binop(op, t1, t2) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    T.mk_term (T.Binop(op, t1',  t2')) (T.get_type t1')
+  |S.Not(t1) ->
+    let t1' = convert_term t1 env in
+    T.mk_term (T.Not(t1')) (T.get_type t1')
+  |S.Neg(t1) ->
+    let t1' = convert_term t1 env in
+    T.mk_term (T.Neg(t1')) (T.get_type t1')
+  |S.Comp(cop, t1, t2) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    T.mk_term (T.Comp(cop, t1', t2')) (T.get_type t1')
+  |S.Fun(f, arg_l, t1, t2, f_pot) -> begin
+    match S.get_type t with
+    |S.TPoly(_, _, S.TFun(arg_l_mty, _, _)) ->
+      let arg_l_mty' = List.map convert_mty arg_l_mty in
+      let env' =
+        List.fold_left2 (fun out x mty -> StrMap.add x (T.TPoly([], [], mty)) out) env arg_l arg_l_mty'
+      in
+      let t1' = convert_term t1 env' in
+      let t2' = convert_term t2 env in
+      T.mk_term
+        (T.Fun(f, arg_l, t1', t2',
+               convert_fun_pot f_pot env' (List.mapi (fun i v -> v, i) arg_l)))
+        (ty_of (T.TFun(arg_l_mty', mty_of (T.get_type t1'), region_of_ty (T.get_type t2'))))
+    |_ -> assert false
+  end
+  |S.App(t1, t_l) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, T.TFun(_, mty_out, _))) = T.get_type t1' in
+    T.mk_term
+      (T.App(t1', List.map (fun t2 -> convert_term t2 env) t_l))
+      (ty_of mty_out)
+  |S.If(t1, t2, t3) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    let t3' = convert_term t3 env in
+    T.mk_term
+      (T.If(t1', t2', t3'))
+      (T.get_type t3')
+  |S.Match(t_match, t_nil, x, xs, t_cons) ->
+    let t_match' = convert_term t_match env in
+    let t_nil' = convert_term t_nil env in
+    let t_cons' = convert_term t_cons env in
+    T.mk_term
+      (T.Match(t_match', t_nil', x, xs, t_cons'))
+      (T.get_type t_cons')
+  |S.Let(x, t1, t2) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, mty)) = T.get_type t1' in
+    let t2' = convert_term t2 (StrMap.add x (ty_of mty) env) in
+    T.mk_term
+      (T.Let(x, t1', t2'))
+      (T.get_type t2')
+  |S.Letrec(x, t1, t2) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, mty)) = T.get_type t1' in
+    let t2' = convert_term t2 (StrMap.add x (ty_of mty)
+     env) in
+    T.mk_term
+      (T.Letrec(x, t1', t2'))
+      (T.get_type t2')
+  |S.Pair(t1, t2, t3) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    let t3' = convert_term t3 env in
+    T.mk_term
+      (T.Pair(t1', t2', t3'))
+      (ty_of (T.TCouple(mty_of (T.get_type t1'),
+                        mty_of (T.get_type t2'),
+                        region_of_ty (T.get_type t3'))))
+  |S.Fst(t1) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, T.TCouple(mty1, _, _))) = T.get_type t1' in
+    T.mk_term (T.Fst(t1')) (ty_of mty1)
+  |S.Snd(t1) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, T.TCouple(_, mty2, _))) = T.get_type t1' in
+    T.mk_term (T.Snd(t1')) (ty_of mty2)
+  |S.Hd(t1) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, T.TList(_, mty1, _))) = T.get_type t1' in
+    T.mk_term (T.Hd(t1')) (ty_of mty1)
+  |S.Tl(t1) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, T.TList(i, mty1, r))) = T.get_type t1' in
+    T.mk_term (T.Tl(t1')) (ty_of (T.TList(i-1, mty1, r)))
+  |S.Nil ->
+    let (S.TList(mty1, r)) = mty in
+    T.mk_term T.Nil (ty_of (T.TList(0, convert_mty mty1, region_of r)))
+  |S.Cons(t1, t2, t3) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    let t3' = convert_term t3 env in
+    let (T.TPoly(_, _, mty1)) = T.get_type t1' in
+    let (T.TPoly(_, _, T.TList(i, mty2, _))) = T.get_type t2' in
+    let (T.TPoly(_, _, mty3)) = T.get_type t3' in
+    T.mk_term
+      (T.Cons(t1', t2', t3'))
+      (ty_of (T.TList(i+1, max_mty mty1 mty2, region_of_mty mty3)))
+  |S.Ref(t1, t2) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    T.mk_term
+      (T.Ref(t1', t2'))
+      (ty_of (T.TRef(mty_of (T.get_type t1'), region_of_ty (T.get_type t2'))))
+  |S.Assign(t1, t2) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    T.mk_term (T.Assign(t1', t2')) (ty_of T.TUnit)
+  |S.Deref(t1) ->
+    let t1' = convert_term t1 env in
+    let (T.TPoly(_, _, T.TRef(mty1, _))) = T.get_type t1' in
+    T.mk_term (T.Deref(t1')) (ty_of mty1)
+  |S.Newrgn ->
+    let (S.THnd(r)) = mty in
+    T.mk_term T.Newrgn (ty_of (T.THnd(region_of r)))
+  |S.Aliasrgn(t1, t2) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    T.mk_term (T.Aliasrgn(t1', t2')) (T.get_type t2')
+  |S.Freergn(t1) ->
+    let t1' = convert_term t1 env in
+    T.mk_term (T.Freergn(t1')) (ty_of T.TUnit)
+  |S.Sequence(t1, t2) ->
+    let t1' = convert_term t1 env in
+    let t2' = convert_term t2 env in
+    T.mk_term (T.Sequence(t1', t2')) (T.get_type t2')
 
 let convert t = convert_term t StrMap.empty
