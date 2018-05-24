@@ -116,6 +116,7 @@ pot_term:
   |LENGTH LPAR v = IDENT RPAR { PLen(v) }
   |i = INTEGER { PLit(i) }
   |p1 = pot_term PLUS p2 = pot_term { PAdd(p1, p2) }
+  |p1 = pot_term TIMES p2 = pot_term { PMul(p1, p2) }
   |MINUS p1 = pot_term { PMin(p1) }
   |LPAR p1 = pot_term RPAR { p1 }
 ;

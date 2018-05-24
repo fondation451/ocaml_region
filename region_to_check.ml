@@ -12,7 +12,7 @@ let rec lift_type mty =
   |S.TFun(mty_l, mty1, r) ->
     T.TFun(List.map lift_type mty_l, lift_type mty1, r, T.empty_capabilities, T.empty_capabilities, T.empty_effects)
   |S.TCouple(mty1, mty2, r) -> T.TCouple(lift_type mty1, lift_type mty2, r)
-  |S.TList(i, mty1, r) -> T.TList(lift_type mty1, r)
+  |S.TList(i, mty1, r) -> T.TList(i, lift_type mty1, r)
   |S.TRef(mty1, r) -> T.TRef(lift_type mty1, r)
   |S.THnd(r) -> T.THnd(r)
 
@@ -23,7 +23,7 @@ let fv_mty mty =
     |T.TAlpha(a) -> StrSet.add a out
     |T.TFun(mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 out)
-    |T.TList(mty1, r) |T.TRef(mty1, r) -> loop mty1 out
+    |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 out
   in loop mty StrSet.empty
 
 let fr_mty mty =
@@ -33,7 +33,7 @@ let fr_mty mty =
     |T.THnd(r) -> StrSet.add r out
     |T.TFun(mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (StrSet.add r out))
-    |T.TList(mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
+    |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
 
 let unrestricted c g = T.cap_forall (fun (r, cap) -> not (T.gamma_mem r g) || (cap = T.Relaxed)) c
@@ -119,7 +119,7 @@ let rec replace_rgn s mty =
         replace_effects s phie
       )
   |T.TCouple(mty1, mty2, r) -> T.TCouple(replace_rgn s mty1, replace_rgn s mty2, replace s r)
-  |T.TList(mty1, r) -> T.TList(replace_rgn s mty1, replace s r)
+  |T.TList(i, mty1, r) -> T.TList(i, replace_rgn s mty1, replace s r)
   |T.TRef(mty1, r) -> T.TRef(replace_rgn s mty1, replace s r)
 
 let rec replace_rgn_ty s (T.TPoly(_, _, mty)) = replace_rgn s mty
@@ -147,7 +147,7 @@ let rec instance_of_rgn r mty1 mty2 =
       Some(r2)
     else
       merge_some (instance_of_rgn r mty1 mty1') (instance_of_rgn r mty2 mty2')
-  |T.TList(mty1, r1), T.TList(mty1', r2) |T.TRef(mty1, r1), T.TRef(mty1', r2) ->
+  |T.TList(_, mty1, r1), T.TList(_, mty1', r2) |T.TRef(mty1, r1), T.TRef(mty1', r2) ->
     if r = r1 then
       Some(r2)
     else
@@ -215,8 +215,8 @@ let check_rgn r c =
     raise (T.Check_Error (Printf.sprintf "No capabilities for region handler %s" r))
 
 let rec check_term env g c t =
-(*  print_cap c "c";
-  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);*)
+  print_cap c "c";
+  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);
   let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in
   let g' = List.fold_left (fun out r -> T.gamma_add r out) g r_l in
@@ -231,7 +231,7 @@ let rec check_term env g c t =
     let ty' = try StrMap.find v env with Not_found -> T.TPoly(a_l, r_l, lift_type ty) in
     let T.TPoly(_, _, mty') = ty' in
     match mty' with
-    |T.THnd(r) |T.TFun(_, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, r) |T.TRef(_, r) ->
+    |T.THnd(r) |T.TFun(_, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, r) ->
       if T.gamma_mem r g' then
         T.mk_term (T.Var(v)) ty', g, c, T.effects_of [T.ERead(r)]
       else

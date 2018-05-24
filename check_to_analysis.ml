@@ -46,7 +46,7 @@ let rec concrete_rgn t =
 let rec rgn_mty mty =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> StrSet.empty
-  |S.TList(mty1, r) |S.TRef(mty1, r) -> StrSet.add r (rgn_mty mty1)
+  |S.TList(_, mty1, r) |S.TRef(mty1, r) -> StrSet.add r (rgn_mty mty1)
   |S.TCouple(mty1, mty2, r) -> StrSet.add r (StrSet.union (rgn_mty mty1) (rgn_mty mty2))
   |S.TFun(mty_l, mty2, r, _, _, _) ->
     List.fold_left (fun out mty1 -> StrSet.union (rgn_mty mty1) out) (StrSet.add r (rgn_mty mty2)) mty_l
@@ -74,7 +74,7 @@ let rec rgn_of t =
 let on_rgn r (S.TPoly(_, _, mty)) =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> false
-  |S.TFun(_, _, r', _, _, _) |S.TCouple(_, _, r') |S.TList(_, r') |S.TRef(_, r') |S.THnd(r') -> r = r'
+  |S.TFun(_, _, r', _, _, _) |S.TCouple(_, _, r') |S.TList(_, _, r') |S.TRef(_, r') |S.THnd(r') -> r = r'
 
 let fun_name t =
   match S.get_term t with
@@ -101,6 +101,7 @@ let convert_line pot =
     |H.PMin(p1) -> loop p1 (-1 * coef) const out
     |H.PMul(_) -> assert false
     |H.PSize(_) -> assert false
+    |H.PLen(_) -> assert false
   in
   let bound, out = loop pot 1 0 [] in
   -1 * bound, out
@@ -158,35 +159,80 @@ let get_rgn (S.TPoly(_, _, mty)) =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> assert false
   |S.TFun(_, _, r, _, _, _) |S.TCouple(_, _, r)
-  |S.TList(_, r) |S.TRef(_, r) |S.THnd(r) -> r
+  |S.TList(_, _, r) |S.TRef(_, r) |S.THnd(r) -> r
 
-let rec instanciate_size p t_l out =
-  match p with
-  |H.PPot(_) |H.PLit(_) -> p, out
-  |H.PSize(i) ->
-    let rec loop t_l i =
-      match t_l with
-      |[] -> H.PUnit, out
-      |hd::tl ->
-        let ty = S.get_type hd in
-        if i = 0 then
-          let r = get_rgn ty in
-          H.PPot(r), r::out
-        else
-          loop tl (i-1)
-    in loop t_l i
-  |H.PAdd(p1, p2) ->
-    let p1', out = instanciate_size p1 t_l out in
-    let p2', out = instanciate_size p2 t_l out in
-    H.PAdd(p1', p2'), out
-  |H.PMin(p1) ->
-    let p1', out = instanciate_size p1 t_l out in
-    H.PMin(p1'), out
-  |H.PMul(p1, p2) ->
-    let p1', out = instanciate_size p1 t_l out in
-    let p2', out = instanciate_size p2 t_l out in
-    H.PMul(p1', p2'), out
-  |H.PUnit -> H.PUnit, out
+let get_len (S.TPoly(_, _, mty)) =
+  match mty with
+  |S.TList(i, _, _) -> i
+  |_ -> assert false
+
+let rec instanciate_size i t_l out =
+  match t_l with
+  |[] -> (*H.PUnit, out*) assert false
+  |hd::tl when i = 0 -> let r = get_rgn (S.get_type hd) in H.PPot(r), r::out
+  |hd::tl -> instanciate_size (i-1) tl out
+
+let rec instanciate_length i t_l out =
+  match t_l with
+  |[] -> assert false
+  |hd::tl when i = 0 -> H.PLit(get_len (S.get_type hd)), out
+  |hd::tl -> instanciate_length (i-1) tl out
+
+let rec simplify_lit p =
+  let rec loop p =
+    match p with
+    |H.PAdd(p1, p2) -> begin
+      let p1' = loop p1 in
+      let p2' = loop p2 in
+      match p1', p2' with
+      |H.PLit(i), H.PLit(i') -> H.PLit(i + i')
+      |H.PAdd(H.PLit(i'), p'), H.PLit(i)
+      |H.PAdd(p', H.PLit(i')), H.PLit(i)
+      |H.PLit(i), H.PAdd(H.PLit(i'), p')
+      |H.PLit(i), H.PAdd(p', H.PLit(i')) -> H.PAdd(p', H.PLit(i + i'))
+      |_ -> H.PAdd(p1', p2')
+    end
+    |H.PMul(p1, p2) -> begin
+      let p1' = loop p1 in
+      let p2' = loop p2 in
+      match p1', p2' with
+      |H.PLit(i), H.PLit(i') -> H.PLit(i * i')
+      |H.PMul(H.PLit(i'), p'), H.PLit(i)
+      |H.PMul(p', H.PLit(i')), H.PLit(i)
+      |H.PLit(i), H.PMul(H.PLit(i'), p')
+      |H.PLit(i), H.PMul(p', H.PLit(i')) -> H.PMul(p', H.PLit(i * i'))
+      |_ -> H.PMul(p1', p2')
+    end
+    |H.PMin(p1) -> begin
+      let p1' = loop p1 in
+      match p1' with
+      |H.PLit(i) -> H.PLit(-1 * i)
+      |_ -> H.PMin(p1')
+    end
+    |_ -> p
+  in loop p
+
+let rec instanciate p t_l =
+  let rec loop p t_l out =
+    match p with
+    |H.PPot(_) |H.PLit(_) -> p, out
+    |H.PSize(i) -> instanciate_size i t_l out
+    |H.PLen(i) -> instanciate_length i t_l out
+    |H.PAdd(p1, p2) ->
+      let p1', out = loop p1 t_l out in
+      let p2', out = loop p2 t_l out in
+      H.PAdd(p1', p2'), out
+    |H.PMin(p1) ->
+      let p1', out = loop p1 t_l out in
+      H.PMin(p1'), out
+    |H.PMul(p1, p2) ->
+      let p1', out = loop p1 t_l out in
+      let p2', out = loop p2 t_l out in
+      H.PMul(p1', p2'), out
+    |H.PUnit -> H.PUnit, out
+  in
+  let p', out = loop p t_l [] in
+  simplify_lit p', out
 
 let rec fresh_names_p p vars s =
   match p with
@@ -364,18 +410,17 @@ let process_r r_l cr_l t =
               let out1, n', n'' = List.fold_left
                 (fun (out1, n', n'') r_sub ->
                   let cr, dr, fun_lines = find_fun_pot r_sub (fun_name t1) in
-                  let cr, r_cr = instanciate_size cr t_l [] in
-                  let dr, r_dr = instanciate_size dr t_l [] in
+                  let cr, r_cr = instanciate cr t_l in
+                  let dr, r_dr = instanciate dr t_l in
                   let fun_lines, sub =
                     fresh_names
-                      (
-                        List.fold_left
-                          (fun fun_lines r ->
-                            let rlines, _ = StrMap.find r out in
-                            List.rev_append rlines fun_lines)
-                          fun_lines
-                          (List.rev_append r_cr r_dr)
-                      ) vars StrMap.empty
+                      (List.fold_left
+                        (fun fun_lines r ->
+                          let rlines, _ = StrMap.find r out in
+                          List.rev_append rlines fun_lines)
+                        fun_lines
+                        (List.rev_append r_cr r_dr))
+                      vars StrMap.empty
                   in
                   let cr, sub = fresh_names_p cr vars sub in
                   let dr, sub = fresh_names_p dr vars sub in

@@ -35,11 +35,12 @@ let rec convert_p p arg_l =
   |S.PPot(v) -> T.PPot(v)
   |S.PLit(i) -> T.PLit(i)
   |S.PSize(s) -> T.PSize(List.assoc s arg_l)
+  |S.PLen(s) -> T.PLen(List.assoc s arg_l)
   |S.PAdd(p1, p2) -> T.PAdd(convert_p p1 arg_l, convert_p p2 arg_l)
   |S.PMin(p1) -> T.PMin(convert_p p1 arg_l)
   |S.PMul(p1, p2) -> T.PMul(convert_p p1 arg_l, convert_p p2 arg_l)
 
-let convert_pot (rgn, (pc, pd)) env arg_l = region_of_ty (StrMap.find rgn env), (convert_p pc arg_l, convert_p pd arg_l)
+let convert_pot (rgn, (pc, pd)) env arg_l = region_of_mty (StrMap.find rgn env), (convert_p pc arg_l, convert_p pd arg_l)
 
 let convert_pot_l pot_l env arg_l =
   let rec loop pot_l out =
@@ -81,7 +82,8 @@ let rec convert_term t env =
   |S.Var(v) ->
     T.mk_term
       (T.Var(v))
-      (try StrMap.find v env with Not_found -> ty_of (convert_mty mty))
+      (ty_of (try StrMap.find v env with Not_found -> convert_mty mty
+        ))
   |S.Binop(op, t1, t2) ->
     let t1' = convert_term t1 env in
     let t2' = convert_term t2 env in
@@ -101,7 +103,8 @@ let rec convert_term t env =
     |S.TPoly(_, _, S.TFun(arg_l_mty, _, _)) ->
       let arg_l_mty' = List.map convert_mty arg_l_mty in
       let env' =
-        List.fold_left2 (fun out x mty -> StrMap.add x (T.TPoly([], [], mty)) out) env arg_l arg_l_mty'
+        List.fold_left2 (fun out x mty -> StrMap.add x
+          mty out) env arg_l arg_l_mty'
       in
       let t1' = convert_term t1 env' in
       let t2' = convert_term t2 env in
@@ -134,15 +137,14 @@ let rec convert_term t env =
   |S.Let(x, t1, t2) ->
     let t1' = convert_term t1 env in
     let (T.TPoly(_, _, mty)) = T.get_type t1' in
-    let t2' = convert_term t2 (StrMap.add x (ty_of mty) env) in
+    let t2' = convert_term t2 (StrMap.add x mty env) in
     T.mk_term
       (T.Let(x, t1', t2'))
       (T.get_type t2')
   |S.Letrec(x, t1, t2) ->
     let t1' = convert_term t1 env in
     let (T.TPoly(_, _, mty)) = T.get_type t1' in
-    let t2' = convert_term t2 (StrMap.add x (ty_of mty)
-     env) in
+    let t2' = convert_term t2 (StrMap.add x mty env) in
     T.mk_term
       (T.Letrec(x, t1', t2'))
       (T.get_type t2')

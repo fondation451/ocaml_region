@@ -61,6 +61,7 @@ let escCar = '\\' (['n' 't' '"' '\\'] as esc)
 let alpha = ['a'-'z' 'A'-'Z']
 let digit = ['0'-'9']
 let ident = alpha (alpha | '_' | digit)*
+let ident_cont = '_' alpha (alpha | '_' | digit)*
 
 rule token = parse
   |'\n' { newline lexbuf; token lexbuf }
@@ -77,6 +78,10 @@ rule token = parse
       else INTEGER(i)
     }
   |ident as str_id {try Hashtbl.find kwds str_id with Not_found -> IDENT(str_id)}
+  |ident_cont as str_id
+    {
+      try Hashtbl.find kwds str_id with Not_found -> raise (Lexing_error "")
+    }
   |',' { COMA }
   |';' { SEMICOLON }
   |':' { COLON }

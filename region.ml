@@ -39,7 +39,7 @@ and pot =
   |PPot of string
   |PLit of int
   |PSize of int
-  |PLen of string
+  |PLen of int
   |PAdd of pot * pot
   |PMin of pot
   |PMul of pot * pot
