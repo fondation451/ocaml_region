@@ -3,6 +3,9 @@ open Util
 module S = Type
 module T = Region
 
+
+
+
 let region_of r = match r with |S.RRgn(rgn) |S.RAlpha(rgn) -> rgn
 
 let rec convert_mty mty =
@@ -20,6 +23,24 @@ let rec convert_mty mty =
   |S.THnd(r) -> T.THnd(region_of r)
 
 let convert_ty (S.TPoly(alpha_l, rgn_l, mty)) = T.TPoly(alpha_l, rgn_l, convert_mty mty)
+
+let rec merge_mty mty1 mty2 =
+  match mty1, mty2 with
+  |S.TInt, T.TInt |S.TBool, T.TBool |S.TUnit, T.TUnit -> mty2
+  |S.THnd(r), T.THnd(_) -> T.THnd(region_of r)
+  |S.TFun(arg_mty_l, mty2, r), T.TFun(arg_mty_l', mty2', _) ->
+    T.TFun(List.map2 merge_mty arg_mty_l arg_mty_l', merge_mty mty2 mty2', region_of r)
+  |S.TCouple(mty1, mty2, r), T.TCouple(mty1', mty2', _) ->
+    T.TCouple(merge_mty mty1 mty1', merge_mty mty2 mty2', region_of r)
+  |S.TList(mty1, r), T.TList(i, mty1', _) ->
+    T.TList(i, merge_mty mty1 mty1', region_of r)
+  |S.TRef(mty1, r), T.TRef(mty1', _) ->
+    T.TRef(merge_mty mty1 mty1', region_of r)
+  |S.TAlpha(a1), T.TAlpha(a2) when a1 = a2 -> T.TAlpha(a2)
+  |_, T.TAlpha(a2) -> convert_mty mty1
+  |S.TAlpha(a1), _ -> mty2
+  |_ -> Printf.printf "Error %s %s" (S.show_rcaml_type mty1) (T.show_rcaml_type mty2); assert false
+
 
 let region_of_mty mty =
   match mty with
@@ -74,7 +95,7 @@ let rec max_mty mty1 mty2 =
 let rec convert_term t env =
   let (S.TPoly(a_l, r_l, mty)) = S.get_type t in
   let te = S.get_term t in
-  let ty_of mty = T.TPoly(a_l, r_l, mty) in
+  let ty_of mty' = T.TPoly(a_l, r_l, merge_mty mty mty') in
   match te with
   |S.Unit -> T.mk_term T.Unit (ty_of T.TUnit)
   |S.Bool(b) -> T.mk_term (T.Bool(b)) (ty_of T.TBool)
@@ -99,8 +120,8 @@ let rec convert_term t env =
     let t2' = convert_term t2 env in
     T.mk_term (T.Comp(cop, t1', t2')) (T.get_type t1')
   |S.Fun(f, arg_l, t1, t2, f_pot) -> begin
-    match S.get_type t with
-    |S.TPoly(_, _, S.TFun(arg_l_mty, _, _)) ->
+    match mty with
+    |S.TFun(arg_l_mty, _, _) ->
       let arg_l_mty' = List.map convert_mty arg_l_mty in
       let env' =
         List.fold_left2 (fun out x mty -> StrMap.add x
@@ -111,7 +132,9 @@ let rec convert_term t env =
       T.mk_term
         (T.Fun(f, arg_l, t1', t2',
                convert_fun_pot f_pot env' (List.mapi (fun i v -> v, i) arg_l)))
-        (ty_of (T.TFun(arg_l_mty', mty_of (T.get_type t1'), region_of_ty (T.get_type t2'))))
+        (* (ty_of (T.TFun(arg_l_mty', mty_of (T.get_type t1'), region_of_ty (T.get_type t2')))) *)
+        (ty_of (convert_mty mty))
+
     |_ -> assert false
   end
   |S.App(t1, t_l) ->

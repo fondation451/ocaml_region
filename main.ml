@@ -50,9 +50,10 @@ let () =
     let checked_prog = Region_to_check.rgn_check region_prog in
     Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term checked_prog);
 
-    let no_side_prog = Check_to_analysis.process checked_prog in
-    Printf.printf "(********** RCAML REGIONS INEQUALITIES **********)\n";
-    List.iter (fun (r, s) -> Printf.printf "%s:%d\n\n" r s) no_side_prog;
+    let bound = Check_to_analysis.process checked_prog in
+    Printf.printf "(********** RCAML REGIONS BYTES BOUND
+       **********)\n";
+    Printf.printf "Bound: %d bytes\n" bound;
 
     ()
 
@@ -76,4 +77,3 @@ let () =
     exit 1
 (*  |_ ->
     eprintf "Compilation error\n@.";*)
-

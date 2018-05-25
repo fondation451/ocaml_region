@@ -127,7 +127,8 @@ let rec replace_rgn_ty s (T.TPoly(_, _, mty)) = replace_rgn s mty
 
 let rec instance_of_rgn r mty1 mty2 =
   match mty1, mty2 with
-  |T.TInt, T.TInt |T.TBool, T.TBool |T.TUnit, T.TUnit |T.TAlpha(_), T.TAlpha(_) |T.TAlpha(_), _ |_, T.TAlpha(_) -> None
+  |T.TInt, T.TInt |T.TBool, T.TBool |T.TUnit, T.TUnit
+  |T.TAlpha(_), T.TAlpha(_) |T.TAlpha(_), _ |_, T.TAlpha(_) -> None
   |T.THnd(r1), T.THnd(r2) ->
     if r1 = r then
       Some(r2)

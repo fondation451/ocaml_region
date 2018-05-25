@@ -282,41 +282,8 @@ let link_lines r lines lin_progs =
     |_ -> out
   in
   List.fold_left (fun out line -> link_line line out) lines lines
-(*
-let rec verify_r f arg_l (r, (pc, pd)) t =
-  match t with
-  |S.Unit
-  |S.Bool(b)
-  |S.Int(i)
-  |S.Var(v)
-  |S.Binop(op, t1, t2)
-  |S.Not(t1)
-  |S.Neg(t1)
-  |S.Comp(c, t1, t2)
-  |S.Fun(ff, f_arg_l, t1, t2, f_pot)
-  |S.App(_, t1, t_l)
-  |S.If(t1, t2, t3)
-  |S.Match(t_match, t_nil, x, xs, t_cons)
-  |S.Let(_, t1, t2)
-  |S.Letrec (_, t1, t2)
-  |S.Pair(t1, t2, t3)
-  |S.Fst(t1)
-  |S.Snd(t1)
-  |S.Hd(t1)
-  |S.Tl(t1)
-  |S.Nil(t1)
-  |S.Cons(t1, t2, t3)
-  |S.Ref(t1, t2)
-  |S.Assign(t1, t2)
-  |S.Deref(t1)
-  |S.Newrgn
-  |S.Aliasrgn(t1, t2)
-  |S.Freergn(t1)
-  |S.Sequence(t1, t2)
-*)
 
 let env = Hashtbl.create 10
-
 let add_fun_pot r f v = Hashtbl.add env (r, f) v
 let mem_fun_pot r f = Hashtbl.mem env (r, f)
 let find_fun_pot r f = Hashtbl.find env (r, f)
@@ -333,7 +300,8 @@ let print_fun_pot () =
 
 let process_r r_l cr_l t =
   let vars = ref (StrSet.empty) in
-  let rec process_t t out =
+  let saved_state = ref [] in
+  let rec process_t t r_cost =
 (*  Printf.printf "--------- NO SIDE PROCCES ------------\n%s\n\n" (S.show_typed_term t);
   Printf.printf "ENV\n";
   Hashtbl.iter (fun (r, f) (c, d, lines) -> Printf.printf "%s %s : (%s, %s, %s)\n" f r c d (H.show_integer_prog lines)) env;
@@ -349,11 +317,11 @@ let process_r r_l cr_l t =
           let m = H.PPot(H.mk_pot vars) in
           let new_line = H.PAdd(m, H.PMin  n) in
           new_line::lines, m)
-        out
-    |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) -> process_t t2 (process_t t1 out)
-    |S.Not(t1) |S.Neg(t1) -> process_t t1 out
+        r_cost
+    |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) -> process_t t2 (process_t t1 r_cost)
+    |S.Not(t1) |S.Neg(t1) -> process_t t1 r_cost
     |S.Fun(f, arg_l, t1, t2, pot) when no_side_effect ty -> begin
-      let out =
+      let r_cost =
         StrMap.mapi
           (fun r (lines, n) ->
             if on_rgn r ty then
@@ -364,18 +332,18 @@ let process_r r_l cr_l t =
               new_line::lines, m
             else
               lines, n)
-          out
+          r_cost
       in
       match pot with
       |Some(fun_pot_l) ->
         List.iter (fun (r, (pc, pd)) -> add_fun_pot r f (pc, pd, [])) fun_pot_l;
-        out
+        r_cost
       |None ->
-        let l_n = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings out) in
+        let l_n = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings r_cost) in
         let l_c = List.map (fun (r, n) -> r, H.PPot(H.mk_pot' "c" vars)) l_n in
         let l_d = List.map (fun (r, n) -> r, H.PPot(H.mk_pot' "d" vars)) l_n in
         List.iter2 (fun (r, c) (r, d) -> add_fun_pot r f (c, d, [])) l_c l_d;
-        let out_f =
+        let r_cost_f =
           StrMap.mapi
             (fun r (lines, d') ->
               let c = List.assoc r l_c in
@@ -385,7 +353,7 @@ let process_r r_l cr_l t =
                 new_line_fun::lines, d
               else
                 [], c)
-            (process_t t1 (StrMap.mapi (fun r (lines, n) -> [], List.assoc r l_c) out))
+            (process_t t1 (StrMap.mapi (fun r (lines, n) -> [], List.assoc r l_c) r_cost))
         in
         StrMap.iter
           (fun r (lines, d) ->
@@ -393,13 +361,13 @@ let process_r r_l cr_l t =
               add_fun_pot r f (List.assoc r l_c, d, lines)
             else
               remove_fun_pot r f)
-          out_f;
-        out
+          r_cost_f;
+        r_cost
     end
     |S.App(s, t1, t_l) ->
-      let out = process_t t1 out in
-      let l_n' = List.map (fun (r, (lines, n')) -> r, n') (StrMap.bindings out) in
-      let out = List.fold_left (fun out t2 -> process_t t2 out) out t_l in
+      let r_cost = process_t t1 r_cost in
+      let l_n' = List.map (fun (r, (lines, n')) -> r, n') (StrMap.bindings r_cost) in
+      let r_cost = List.fold_left (fun r_cost t2 -> process_t t2 r_cost) r_cost t_l in
       StrMap.mapi
         (fun r (lines, n'') ->
           let new_lines, n'' =
@@ -416,7 +384,7 @@ let process_r r_l cr_l t =
                     fresh_names
                       (List.fold_left
                         (fun fun_lines r ->
-                          let rlines, _ = StrMap.find r out in
+                          let rlines, _ = StrMap.find r r_cost in
                           List.rev_append rlines fun_lines)
                         fun_lines
                         (List.rev_append r_cr r_dr))
@@ -435,14 +403,14 @@ let process_r r_l cr_l t =
             with Not_found -> if n'' <> n' then [H.PAdd(n'', H.PMin n')], n'' else [], n''
           in
           List.append new_lines lines, n'')
-        out
+        r_cost
     |S.If(t1, t2, t3) ->
-      let out1 = process_t t1 out in
-      let l_n1 = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings out1) in
-      let out2 = process_t t2 out1 in
-      let l_n2 = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings out2) in
-      let out2' = StrMap.mapi (fun r (lines, _) -> lines, List.assoc r l_n1) out2 in
-      let out3 = process_t t3 out2' in
+      let r_cost1 = process_t t1 r_cost in
+      let l_n1 = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings r_cost1) in
+      let r_cost2 = process_t t2 r_cost1 in
+      let l_n2 = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings r_cost2) in
+      let r_cost2' = StrMap.mapi (fun r (lines, _) -> lines, List.assoc r l_n1) r_cost2 in
+      let r_cost3 = process_t t3 r_cost2' in
       StrMap.mapi
         (fun r (lines, m3) ->
           let m2 = List.assoc r l_n2 in
@@ -450,9 +418,9 @@ let process_r r_l cr_l t =
           let new_line1 = H.PAdd(m, H.PMin m2) in
           let new_line2 = H.PAdd(m, H.PMin m3) in
           new_line1::new_line2::lines, m)
-        out3
+        r_cost3
     |S.Match(t_match, t_nil, x, xs, t_cons) -> assert false
-    |S.Let(x, t1, t2) |S.Letrec(x, t1, t2) -> process_t t2 (process_t t1 out)
+    |S.Let(x, t1, t2) |S.Letrec(x, t1, t2) -> process_t t2 (process_t t1 r_cost)
     |S.Pair(t1, t2, t3) ->
       StrMap.mapi
         (fun r (lines, n) ->
@@ -462,8 +430,8 @@ let process_r r_l cr_l t =
             new_line::lines, m
           else
             lines, n)
-        (process_t t2 (process_t t1 out))
-    |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) -> process_t t1 out
+        (process_t t2 (process_t t1 r_cost))
+    |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) -> process_t t1 r_cost
     |S.Cons(t1, t2, t3) ->
       StrMap.mapi
         (fun r (lines, n) ->
@@ -473,10 +441,10 @@ let process_r r_l cr_l t =
             new_line::lines, m
           else
             lines, n)
-        (process_t t2 (process_t t1 out))
-    |S.Ref(t1, t2) -> process_t t2 (process_t t1 out)
-    |S.Assign(t1, t2) -> process_t t2 (process_t t1 out)
-    |S.Deref(t1) -> process_t t1 out
+        (process_t t2 (process_t t1 r_cost))
+    |S.Ref(t1, t2) -> process_t t2 (process_t t1 r_cost)
+    |S.Assign(t1, t2) -> process_t t2 (process_t t1 r_cost)
+    |S.Deref(t1) -> process_t t1 r_cost
     |S.Newrgn ->
       StrMap.mapi
         (fun r (lines, n) ->
@@ -486,31 +454,46 @@ let process_r r_l cr_l t =
             new_line::lines, m
           else
             lines, n)
-        out
-    |S.Aliasrgn(t1, t2) -> process_t t2 (process_t t1 out)
-    |S.Freergn(t1) -> process_t t1 out
-    |S.Sequence(t1, t2) -> process_t t2 (process_t t1 out)
+        r_cost
+    |S.Aliasrgn(t1, t2) -> process_t t2 (process_t t1 r_cost)
+    |S.Freergn(t1) ->
+      let r_cost = process_t t1 r_cost in
+      let r = get_rgn (S.get_type t1) in
+      saved_state := r_cost::(!saved_state);
+      StrMap.remove r r_cost
+    |S.Sequence(t1, t2) -> process_t t2 (process_t t1 r_cost)
+  in
+  let compute_lin_prog lin_prog memories =
+    let lin_prog = List.map (fun (r, (lines, _)) -> r, lines) (StrMap.bindings lin_prog) in
+    let lin_prog = List.filter (fun (r, lines) -> List.mem r cr_l) lin_prog in
+    let sim_l = List.map
+      (fun (r, lines) ->
+        (*let lines = link_lines r lines lin_progs in*)
+        r, convert_to_simplex
+             (List.assoc r memories)
+             (StrSet.elements (StrSet.add (List.assoc r memories) (vars_of_lines lines)))
+             lines)
+      (List.rev lin_prog)
+    in
+    let sol_l =
+      List.map
+        (fun (r, sim) ->
+          r, -1 * (from_coef (Simplex.compute sim [List.assoc r memories, Num.Int(-1)])))
+        sim_l
+    in
+    List.fold_left (fun out (r, n) -> out + n) 0 sol_l
   in
   let memories = List.map (fun r -> r, H.mk_pot_with_name r vars) r_l in
-  let lin_progs = List.fold_left (fun out r -> StrMap.add r ([], H.PPot(List.assoc r memories)) out) StrMap.empty r_l in
-  let lin_progs = process_t t lin_progs in
-  let lin_progs = List.map (fun (r, (lines, _)) -> r, lines) (StrMap.bindings lin_progs) in
-  let lin_progs = List.filter (fun (r, lines) -> List.mem r cr_l) lin_progs in
-  let vars = StrSet.elements !vars in
-  let sim_l = List.map
-    (fun (r, lines) ->
-      (*let lines = link_lines r lines lin_progs in*)
-      r, convert_to_simplex
-           (List.assoc r memories)
-           (StrSet.elements (StrSet.add (List.assoc r memories) (vars_of_lines lines)))
-           lines)
-    (List.rev lin_progs)
+  let lin_prog =
+    List.fold_left
+      (fun out r -> StrMap.add r ([], H.PPot(List.assoc r memories)) out)
+      StrMap.empty r_l
   in
-  Printf.printf "ICICIICICIICICICICICICII\n\n\n\n";
-  print_fun_pot ();
-  let sol_l = List.map (fun (r, sim) -> r, -1 * (from_coef (Simplex.compute sim [List.assoc r memories, Num.Int(-1)]))) sim_l in
-  sol_l
-
+  saved_state := (process_t t lin_prog)::(!saved_state);
+  let s_l = List.map (fun lp -> compute_lin_prog lp memories) !saved_state in
+  let tmp = List.map (fun s -> "blabla", s) s_l in
+  List.iter (fun (r, s) -> Printf.printf "%s:%d\n\n" r s) tmp;
+  List.fold_left max 0 s_l
 
 let process t =
   let r_l = StrSet.elements (rgn_of t) in
