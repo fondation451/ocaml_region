@@ -9,7 +9,9 @@ type rcaml_type =
   |TBool
   |TUnit
   |TAlpha of string
-  |TFun of rcaml_type list * rcaml_type * regions * capabilities * capabilities * effects
+  |TFun of (string * string) list *
+           rcaml_type list * rcaml_type * regions *
+           capabilities * capabilities * effects
   |TCouple of rcaml_type * rcaml_type * regions
   |TList of list_sized * rcaml_type * regions
   |TRef of rcaml_type * regions
@@ -72,7 +74,7 @@ and term =
   |Neg of typed_term
   |Comp of comp * typed_term * typed_term
   |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
-  |App of (string * string) list * typed_term * typed_term list
+  |App of typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
   |Match of typed_term * typed_term * string * string * typed_term
   |Let of string * typed_term * typed_term

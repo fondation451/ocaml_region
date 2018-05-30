@@ -10,7 +10,7 @@ let rec lift_type mty =
   |S.TUnit -> T.TUnit
   |S.TAlpha(a) -> T.TAlpha(a)
   |S.TFun(mty_l, mty1, r) ->
-    T.TFun(List.map lift_type mty_l, lift_type mty1, r, T.empty_capabilities, T.empty_capabilities, T.empty_effects)
+    T.TFun([], List.map lift_type mty_l, lift_type mty1, r, T.empty_capabilities, T.empty_capabilities, T.empty_effects)
   |S.TCouple(mty1, mty2, r) -> T.TCouple(lift_type mty1, lift_type mty2, r)
   |S.TList(i, mty1, r) -> T.TList(i, lift_type mty1, r)
   |S.TRef(mty1, r) -> T.TRef(lift_type mty1, r)
@@ -21,7 +21,7 @@ let fv_mty mty =
     match mty with
     |T.TInt |T.TBool |T.TUnit |T.THnd(_) -> out
     |T.TAlpha(a) -> StrSet.add a out
-    |T.TFun(mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
+    |T.TFun(_, mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 out)
     |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 out
   in loop mty StrSet.empty
@@ -31,7 +31,7 @@ let fr_mty mty =
     match mty with
     |T.TInt |T.TBool |T.TUnit |T.TAlpha(_) -> out
     |T.THnd(r) -> StrSet.add r out
-    |T.TFun(mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
+    |T.TFun(_, mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (StrSet.add r out))
     |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
@@ -108,9 +108,10 @@ let rec replace_rgn s mty =
   match mty with
   |T.TInt|T.TBool |T.TUnit |T.TAlpha(_) -> mty
   |T.THnd(r) -> T.THnd(replace s r)
-  |T.TFun(arg_l, mty1, r, cin, cout, phie) ->
+  |T.TFun(s', arg_l, mty1, r, cin, cout, phie) ->
     T.TFun
       (
+        List.map (fun (r1, r2) -> (replace s r1, replace s r2)) s',
         List.map (replace_rgn s) arg_l,
         replace_rgn s mty1,
         replace s r,
@@ -131,7 +132,7 @@ let rec instance_of_rgn r mty1 mty2 =
       Some(r2)
     else
       None
-  |T.TFun(arg_l1, dst1, r1, _, _, _), T.TFun(arg_l2, dst2, r2, _, _, _) ->
+  |T.TFun(_, arg_l1, dst1, r1, _, _, _), T.TFun(_, arg_l2, dst2, r2, _, _, _) ->
     if r1 = r then
       Some(r2)
     else
@@ -179,7 +180,7 @@ let rec instance_of_rgn_mty_l r_l mty1_l mty2_l =
 
 let inst_mty r_l f_mty arg_ty_l =
   match f_mty with
-  |T.TFun(mty_l, mty1, mty2, cin, cout, phie) ->
+  |T.TFun(_, mty_l, mty1, mty2, cin, cout, phie) ->
     let r_l', s = instance_of_rgn_mty_l r_l mty_l arg_ty_l in
     r_l', s
   |_ -> assert false
@@ -202,7 +203,7 @@ let print_gamma g name =
 
 let rec rgn_subs mty1 mty2 out =
   match mty1, mty2 with
-  |S.TFun(mty_l, mty2, r), T.TFun(mty_l', mty2', r', cin, cout, phi) ->
+  |S.TFun(mty_l, mty2, r), T.TFun(_, mty_l', mty2', r', cin, cout, phi) ->
     List.fold_left2
       (fun out mty1 mty1' -> rgn_subs mty1 mty1' out)
       (rgn_subs mty2 mty2' (StrMap.add r' r out))
@@ -218,7 +219,7 @@ let rec rgn_subs mty1 mty2 out =
 
 let rec merge_mty mty_out mty_checked =
   match mty_out, mty_checked with
-  |S.TFun(mty_l, mty2, r), T.TFun(mty_l', mty2', _, cin, cout, phi) ->
+  |S.TFun(mty_l, mty2, r), T.TFun(_, mty_l', mty2', _, cin, cout, phi) ->
     let s =
       List.fold_left2
         (fun out mty1 mty1' -> rgn_subs mty1 mty1' out)
@@ -233,6 +234,7 @@ let rec merge_mty mty_out mty_checked =
     print_cap cout "cout";
     print_cap (replace_cap s cout) "cout'";
     T.TFun(
+      StrMap.bindings s,
       List.map2 merge_mty mty_l mty_l',
       merge_mty mty2 mty2',
       r,
@@ -285,7 +287,7 @@ let rec check_term env g c t =
       Printf.printf "CHECKING OF %s\n\n\n" v;
       let mty' = try StrMap.find v env with Not_found -> lift_type mty in
       match mty' with
-      |T.THnd(r) |T.TFun(_, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, r) ->
+      |T.THnd(r) |T.TFun(_, _, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, r) ->
         if T.gamma_mem r g' then
           T.Var(v), mty', g, c, T.effects_of [T.ERead(r)]
         else
@@ -328,7 +330,7 @@ let rec check_term env g c t =
       print_cap cout' "cout'";
       if unrestricted cin g2 then
         T.Fun(f, arg_l, t1', t2', pot),
-        T.TFun(List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f),
+        T.TFun([], List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f),
         g2, c3,
         T.merge_effects (T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2) phi3
       else
@@ -351,13 +353,13 @@ let rec check_term env g c t =
       (* let t1'' = T.mk_term (T.get_term t1') t1_mty'' a_l r_l' in
       Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_mty''); *)
       match T.get_type t1' with
-      |T.TFun(arg_mty_l, mty_res, mty_r, cin, cout, phie) as f_mty ->
+      |T.TFun(_, arg_mty_l, mty_res, mty_r, cin, cout, phie) as f_mty ->
         print_cap c2 "c2";
         print_cap cin "cin";
         print_cap cout "cout";
   (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
         if sub_cap c2 cin then
-          T.App([], t1', t_l'),
+          T.App(t1', t_l'),
           lift_type mty,
           g2,
           T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),

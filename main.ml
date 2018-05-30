@@ -53,11 +53,9 @@ let () =
     let prog = Simpl_to_check.process prog in
     Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term prog);
 
-    let bound = Check_to_analysis.process checked_prog in
-    Printf.printf "(********** RCAML REGIONS BYTES BOUND
-       **********)\n";
-    Printf.printf "Bound
-    : %d bytes\n" bound;
+    let bound = Check_to_analysis.process prog in
+    Printf.printf "(********** RCAML REGIONS BYTES BOUND **********)\n";
+    Printf.printf "Bound: %d bytes\n" bound;
 
     ()
 
