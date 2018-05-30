@@ -41,24 +41,27 @@ let () =
     let prog = Parser.entry Lexer.token buf in
     Printf.printf "(********** RCAML **********)\n%s\n\n" (Ast.show_term prog);
 
-    let typed_prog = Ast_to_type.type_term prog in
-    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term typed_prog);
+    let prog = Ast_to_type.process prog in
+    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term prog);
 
-    let region_prog = Type_to_region.convert typed_prog in
-    Printf.printf "(********** RCAML REGION **********)\n%s\n\n" (Region.show_typed_term region_prog);
+    let prog = Type_to_ls.process prog in
+    Printf.printf "(********** RCAML LS **********)\n%s\n\n" (Ls.show_typed_term prog);
 
-    let checked_prog = Region_to_check.rgn_check region_prog in
-    Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term checked_prog);
+    let prog = Ls_to_simpl.process prog in
+    Printf.printf "(********** RCAML SIMPL **********)\n%s\n\n" (Simpl.show_typed_term prog);
 
-    let bound = Check_to_analysis.process checked_prog in
+    let prog = Simpl_to_check.process prog in
+    Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term prog);
+
+    (* let bound = Check_to_analysis.process checked_prog in
     Printf.printf "(********** RCAML REGIONS BYTES BOUND
        **********)\n";
-    Printf.printf "Bound: %d bytes\n" bound;
+    Printf.printf "Bound: %d bytes\n" bound; *)
 
     ()
 
   with
-  |Lexer.Lexing_error(str) ->
+  |Lexer.Error(str) ->
     report_loc (lexeme_start_p buf, lexeme_end_p buf);
     eprintf "Lexing error : %s\n@." str;
     exit 1
@@ -66,14 +69,20 @@ let () =
     report_loc (lexeme_start_p buf, lexeme_end_p buf);
     eprintf "Syntax error\n@.";
     exit 1
-  |Type.Type_Error(str) ->
+  |Type.Error(str) ->
     eprintf "Typing error : %s\n@." str;
     exit 1
-  |Region.Region_Error(str) ->
+  |Ls.Error(str) ->
+    eprintf "Ls error : %s\n@." str;
+    exit 1
+  |Simpl.Error(str) ->
+    eprintf "Simpl error : %s\n@." str;
+    exit 1
+  (* |Region.Error(str) ->
     eprintf "Region error : %s\n@." str;
     exit 1
-  |Check.Check_Error(str) ->
+  |Check.Error(str) ->
     eprintf "Check error : %s\n@." str;
-    exit 1
+    exit 1 *)
 (*  |_ ->
     eprintf "Compilation error\n@.";*)

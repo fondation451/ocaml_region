@@ -11,13 +11,13 @@ type rcaml_type =
   |TAlpha of string
   |TFun of rcaml_type list * rcaml_type * regions * capabilities * capabilities * effects
   |TCouple of rcaml_type * rcaml_type * regions
-  |TList of int * rcaml_type * regions
+  |TList of list_sized * rcaml_type * regions
   |TRef of rcaml_type * regions
   |THnd of regions
-and rcaml_type_poly =
-  |TPoly of string list * string list * rcaml_type
 
-and regions = Region.regions
+and regions = Simpl.regions
+
+and list_sized = Simpl.list_sized
 
 and capability =
   |Linear
@@ -32,7 +32,7 @@ and effect =
 
 and effects = effect list
 
-and binop = Region.binop =
+and binop = Simpl.binop =
   |Op_add
   |Op_sub
   |Op_mul
@@ -41,14 +41,14 @@ and binop = Region.binop =
   |Op_and
   |Op_or
 
-and comp = Region.comp =
+and comp = Simpl.comp =
   |Ceq |Cneq
   |Clt |Cgt
   |Cle |Cge
 
-and self = Region.self
+and self = Simpl.self
 
-and pot = Region.pot =
+and pot = Simpl.pot =
   |PPot of string
   |PLit of int
   |PSize of int
@@ -58,9 +58,9 @@ and pot = Region.pot =
   |PMul of pot * pot
   |PUnit
 
-and rgn_pot = Region.rgn_pot
+and rgn_pot = Simpl.rgn_pot
 
-and fun_pot_desc = Region.fun_pot_desc
+and fun_pot_desc = Simpl.fun_pot_desc
 
 and term =
   |Unit
@@ -94,14 +94,23 @@ and term =
 
 and typed_term = {
   rterm : term;
-  rtype : rcaml_type_poly;
+  rtype : rcaml_type;
+  ralpha_l : string list;
+  rrgn_l : string list;
 }
 
 [@@deriving show { with_path = false }]
 
-let mk_term t ty = {rterm = t; rtype = ty}
+let mk_term t mty alpha_l rgn_l = {
+  rterm = t;
+  rtype = mty;
+  ralpha_l = alpha_l;
+  rrgn_l = rgn_l;
+}
 let get_term t = t.rterm
 let get_type t = t.rtype
+let get_alpha_l t = t.ralpha_l
+let get_rgn_l t = t.rrgn_l
 
 let empty_gamma = []
 let empty_capabilities = []

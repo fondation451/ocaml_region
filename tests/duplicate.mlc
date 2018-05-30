@@ -30,6 +30,6 @@ begin
         duplicate (snd cou) rgn2 rgn3 rgn4;
         ()
     end
-
+    
   end
 end

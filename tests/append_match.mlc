@@ -12,13 +12,8 @@ begin
   aliasrgn rgn0 in
   aliasrgn rgn1 in
 
-  let x = 5 in
-  let y = 5 in
-
   let rec append l1 l2 rgn =
     { rgn: size(l1) -> 0; rgn1: 0 -> 0 }
-    let z = x in
-    let y = y in
     match l1 with
     |Nil -> l2
     |Cons x xs -> Cons x (append xs l2 rgn) @ rgn

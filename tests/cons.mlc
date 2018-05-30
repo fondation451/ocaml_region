@@ -1,0 +1,21 @@
+(*
+  Nicolas ASSOUAD
+
+  Test function for memory consumption analysis
+  Cons fun
+
+*)
+
+let rgn0 = newrgn () in
+let rgn1 = newrgn () in
+aliasrgn rgn0 in
+aliasrgn rgn1 in
+
+let rec mcons l x rgn =
+  Cons x l @ rgn
+@
+  rgn0
+in
+
+let l =[1 ; 2 ; 3] @ rgn1 in
+mcons l 0 rgn1

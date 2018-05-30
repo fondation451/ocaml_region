@@ -6,7 +6,7 @@
   open Util
   open Parser
 
-  exception Lexing_error of string
+  exception Error of string
 
   let kwds =
     let h = Hashtbl.create 17 in
@@ -72,15 +72,15 @@ rule token = parse
     {
       let i =
       try int_of_string num
-      with _ -> raise (Lexing_error "int overflow") in
+      with _ -> raise (Error "int overflow") in
       if i > (1 lsl 31)-1 || i < -(1 lsl 31)
-      then raise (Lexing_error "int overflow")
+      then raise (Error "int overflow")
       else INTEGER(i)
     }
   |ident as str_id {try Hashtbl.find kwds str_id with Not_found -> IDENT(str_id)}
   |ident_cont as str_id
     {
-      try Hashtbl.find kwds str_id with Not_found -> raise (Lexing_error "")
+      try Hashtbl.find kwds str_id with Not_found -> raise (Error "")
     }
   |',' { COMA }
   |';' { SEMICOLON }
@@ -112,10 +112,10 @@ rule token = parse
   |"(*" {comment_block lexbuf}
   |eof {EOF}
   |_
-    { raise (Lexing_error (lexeme lexbuf)) }
+    { raise (Error (lexeme lexbuf)) }
 
 and comment_block = parse
   |"*)" { token lexbuf }
   |'\n' { newline lexbuf; comment_block lexbuf }
   |_ { comment_block lexbuf }
-  |eof { raise (Lexing_error("Unfinished comment !\n")) }
+  |eof { raise (Error("Unfinished comment !\n")) }

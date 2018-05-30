@@ -1,5 +1,3 @@
-(* Type for OCaml with regions *)
-
 open Util
 
 exception Error of string
@@ -14,16 +12,12 @@ type rcaml_type =
   |TList of list_sized * rcaml_type * regions
   |TRef of rcaml_type * regions
   |THnd of regions
-and rcaml_type_poly =
-  |TPoly of string list * string list * rcaml_type
 
-and regions =
-  |RRgn of string
-  |RAlpha of string
+and regions = string
 
-and list_sized = int option
+and list_sized = Type.list_sized
 
-and binop = Ast.binop =
+and binop = Type.binop =
   |Op_add
   |Op_sub
   |Op_mul
@@ -32,25 +26,26 @@ and binop = Ast.binop =
   |Op_and
   |Op_or
 
-and comp = Ast.comp =
+and comp = Type.comp =
   |Ceq |Cneq
   |Clt |Cgt
   |Cle |Cge
 
-and self = Ast.self
+and self = Type.self
 
-and pot = Ast.pot =
+and pot =
   |PPot of string
   |PLit of int
-  |PSize of string
-  |PLen of string
+  |PSize of int
+  |PLen of int
   |PAdd of pot * pot
   |PMin of pot
   |PMul of pot * pot
+  |PUnit
 
-and rgn_pot = Ast.rgn_pot
+and rgn_pot = regions
 
-and fun_pot_desc = Ast.fun_pot_desc
+and fun_pot_desc = (rgn_pot * (pot * pot)) list
 
 and term =
   |Unit
@@ -84,11 +79,20 @@ and term =
 
 and typed_term = {
   rterm : term;
-  rtype : rcaml_type_poly;
+  rtype : rcaml_type;
+  ralpha_l : string list;
+  rrgn_l : string list;
 }
 
 [@@deriving show { with_path = false }]
 
-let mk_term t ty = {rterm = t; rtype = ty}
+let mk_term t mty alpha_l rgn_l = {
+  rterm = t;
+  rtype = mty;
+  ralpha_l = alpha_l;
+  rrgn_l = rgn_l;
+}
 let get_term t = t.rterm
 let get_type t = t.rtype
+let get_alpha_l t = t.ralpha_l
+let get_rgn_l t = t.rrgn_l
