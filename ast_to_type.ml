@@ -39,7 +39,8 @@ let fr_mty mty =
     match mty with
     |T.TAlpha(_) |T.TInt |T.TBool |T.TUnit -> out
     |T.THnd(r) -> fr_r r out
-    |T.TFun(mty_l, mty2, r) -> List.fold_left (fun out mty -> loop mty out) (loop mty2 (fr_r r out)) mty_l
+    |T.TFun(mty_l, mty2, r) ->
+      List.fold_left (fun out mty -> loop mty out) (loop mty2 (fr_r r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (fr_r r out))
     |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 (fr_r r out)
   in loop mty StrSet.empty
@@ -59,16 +60,19 @@ let rec apply_m s mty =
   |T.TAlpha(a) -> (try StrMap.find a st with Not_found -> T.TAlpha(a))
   |T.TInt |T.TBool |T.TUnit -> mty
   |T.THnd(r) -> T.THnd(apply_r sr r)
-  |T.TFun(mty_l, mty2, r) -> T.TFun(List.map (fun mty -> apply_m s mty) mty_l, apply_m s mty2, apply_r sr r)
+  |T.TFun(mty_l, mty2, r) ->
+    T.TFun(List.map (fun mty -> apply_m s mty) mty_l, apply_m s mty2, apply_r sr r)
   |T.TCouple(mty1, mty2, r) -> T.TCouple(apply_m s mty1, apply_m s mty2, apply_r sr r)
   |T.TList(ls, mty1, r) -> T.TList(ls, apply_m s mty1, apply_r sr r)
   |T.TRef(mty1, r) -> T.TRef(apply_m s mty1, apply_r sr r)
 
 let remove_subs alpha_l rgn_l s =
   let st, sr = s in
-  List.fold_left (fun out a -> StrMap.remove a out) st alpha_l, List.fold_left (fun out r -> StrMap.remove r out) sr rgn_l
+  List.fold_left (fun out a -> StrMap.remove a out) st alpha_l,
+  List.fold_left (fun out r -> StrMap.remove r out) sr rgn_l
 
-let apply s (T.TPoly(alpha_l, rgn_l, mty)) = T.TPoly(alpha_l, rgn_l, apply_m (remove_subs alpha_l [] s) mty)
+let apply s (T.TPoly(alpha_l, rgn_l, mty)) =
+  T.TPoly(alpha_l, rgn_l, apply_m (remove_subs alpha_l [] s) mty)
 
 let subs_empty = StrMap.empty, StrMap.empty
 
@@ -82,19 +86,26 @@ let fr_env env = fr_ty_l (List.rev_map snd (StrMap.bindings env))
 
 let apply_env s env = StrMap.map (apply s) env
 
-(*let generalize env mty = T.TPoly(StrSet.elements (StrSet.diff (fv_mty mty) (fv_env env)), [], mty)*)
 let generalize env mty =
   T.TPoly(
     StrSet.elements (StrSet.diff (fv_mty mty) (fv_env env)),
-(*    StrSet.elements (StrSet.diff (fr_mty mty) (fr_env env)),*)
     StrSet.elements (fr_mty mty),
-    mty)
+    mty
+  )
 
 let instanciate (T.TPoly(alpha_l, rgn_l, mty)) =
   let alpha_l_ty = List.map (fun _ -> T.TAlpha(mk_var ())) alpha_l in
   let rgn_l_r = List.map (fun _ -> T.RAlpha(mk_rgn ())) rgn_l in
-  let st = List.fold_left2 (fun out alpha ty_alpha -> StrMap.add alpha ty_alpha out) StrMap.empty alpha_l alpha_l_ty in
-  let sr = List.fold_left2 (fun out rgn r_rgn -> StrMap.add rgn r_rgn out) StrMap.empty rgn_l rgn_l_r in
+  let st =
+    List.fold_left2
+      (fun out alpha ty_alpha -> StrMap.add alpha ty_alpha out)
+      StrMap.empty alpha_l alpha_l_ty
+  in
+  let sr =
+    List.fold_left2
+      (fun out rgn r_rgn -> StrMap.add rgn r_rgn out)
+      StrMap.empty rgn_l rgn_l_r
+  in
   let s = st, sr in
   apply_m s mty
 
@@ -103,7 +114,10 @@ let varbind alpha mty =
   |T.TAlpha(alpha') when alpha = alpha' -> subs_empty
   |_ ->
     if StrSet.mem alpha (fv_mty mty) then
-      raise (T.Error(Printf.sprintf "Varbind : %s occurs in %s      %s" alpha (T.show_rcaml_type mty) (strset_str (fv_mty mty))))
+      raise (T.Error(Printf.sprintf "Varbind : %s occurs in %s      %s"
+                                    alpha
+                                    (T.show_rcaml_type mty)
+                                    (strset_str (fv_mty mty))))
     else
       StrMap.singleton alpha mty, StrMap.empty
 
@@ -113,7 +127,6 @@ let rgnbind r1 r2 =
     if rgn1 = rgn2 then
       subs_empty
     else
-      (*subs_empty*)
       raise (T.Error "rgnbind")
   |T.RAlpha(rgn1), T.RRgn(rgn2) -> StrMap.empty, StrMap.singleton rgn1 r2
   |T.RRgn(rgn1), T.RAlpha(rgn2) -> StrMap.empty, StrMap.singleton rgn2 r1
@@ -131,11 +144,16 @@ let rec mgu mty1 mty2 =
   |_, T.TAlpha(a2) -> varbind a2 mty1
   |T.TFun(arg_l1, dst1, r1), T.TFun(arg_l2, dst2, r2) -> begin
     try
-      let s1 = List.fold_left2 (fun s_out arg1 arg2 -> compose_subs (mgu arg1 arg2) s_out) subs_empty arg_l1 arg_l2 in
+      let s1 =
+        List.fold_left2
+          (fun s_out arg1 arg2 -> compose_subs (mgu arg1 arg2) s_out)
+          subs_empty arg_l1 arg_l2
+      in
       let s2 = mgu (apply_m s1 dst1) (apply_m s1 dst2) in
       let s3 = rgnbind r1 r2 in
       compose_subs s3 (compose_subs s1 s2)
-    with Invalid_argument(str) -> raise (T.Error ("Unification of Functions, different number of arguments : " ^ str))
+    with Invalid_argument(str) ->
+      raise (T.Error ("Unification of Functions, different number of arguments : " ^ str))
   end
   |T.TCouple(mty1, mty2, r), T.TCouple(mty1', mty2', r') ->
     let s1 = mgu mty1 mty1' in
@@ -152,18 +170,18 @@ and compose_subs s1 s2 =
   if s1 = subs_empty then s2
   else if s2 = subs_empty then s1
   else (
-  Printf.printf "\nCALL compose_subs : %s\n%s\n\n" (str_of_subs s2) (str_of_subs s1);
+  (* Printf.printf "\nCALL compose_subs : %s\n%s\n\n" (str_of_subs s2) (str_of_subs s1); *)
   let st1, sr1 = s1 in
   let st2, sr2 = s2 in
   let acc_s = ref subs_empty in
-  Printf.printf "\nSTEP compose_subs : %s\n%s\n\n" (str_of_subs ((StrMap.map (apply_m s1) st2), sr2)) (str_of_subs s1);
+  (* Printf.printf "\nSTEP compose_subs : %s\n%s\n\n" (str_of_subs ((StrMap.map (apply_m s1) st2), sr2)) (str_of_subs s1); *)
   let st = StrMap.union
     (fun k mty1 mty2 ->
-      Printf.printf "FLAG";
+      (* Printf.printf "FLAG"; *)
       let s = mgu mty1 mty2 in
       acc_s := compose_subs s !acc_s;
       let out = apply_m s mty1 in
-      Printf.printf "\n\ncompose subs %s : %s %s -> %s\n%s\n\n" k (T.show_rcaml_type mty1) (T.show_rcaml_type mty2) (T.show_rcaml_type out) (str_of_subs s);
+      (* Printf.printf "\n\ncompose subs %s : %s %s -> %s\n%s\n\n" k (T.show_rcaml_type mty1) (T.show_rcaml_type mty2) (T.show_rcaml_type out) (str_of_subs s); *)
       Some(out)) (StrMap.map (apply_m s1) st2) st1 in
   let sr = StrMap.union
     (fun r rgn1 rgn2 ->
@@ -171,14 +189,13 @@ and compose_subs s1 s2 =
       let st, sr = s in
       acc_s := compose_subs s !acc_s;
       let out = apply_r sr rgn1 in
-      Printf.printf "\n\ncompose subs %s : %s %s -> %s\n%s\n\n" r (T.show_regions rgn1) (T.show_regions rgn2) (T.show_regions out) (str_of_subs s);
+      (* Printf.printf "\n\ncompose subs %s : %s %s -> %s\n%s\n\n" r (T.show_regions rgn1) (T.show_regions rgn2) (T.show_regions out) (str_of_subs s); *)
       Some(rgn1))
     (StrMap.map (apply_r sr1) sr2) sr1 in
   compose_subs !acc_s (st, sr)
 )
 
 let remove_env env var = StrMap.remove var env
-
 
 let mty_of (T.TPoly(_, _, mty)) = mty
 
@@ -187,15 +204,14 @@ let get_rgn mty =
   |T.THnd(r) -> r
   |_ -> T.RRgn(mk_rgn ())
 
-
 (***********)
 
 let rec type_infer env t =
-  Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term t);
+  (* Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term t); *)
   match t with
   |S.Var(var) -> begin
     try
-Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_poly);
+(* Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_poly); *)
       subs_empty, T.mk_term (T.Var(var)) (generalize env (instanciate (StrMap.find var env)))
     with Not_found -> raise (T.Error "Type_infer")
   end
@@ -242,7 +258,11 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     s, T.mk_term (T.Comp(c, t1', t2')) (generalize env T.TBool)
   |S.Fun(f, x_l, t1, t2, pot) ->
     let a_l = List.rev_map (fun _ -> T.TAlpha(mk_var ())) x_l in
-    let env' = List.fold_left2 (fun env x mty -> StrMap.add x (T.TPoly([], [], mty)) env) env x_l a_l in
+    let env' =
+      List.fold_left2
+        (fun env x mty -> StrMap.add x (T.TPoly([], [], mty)) env)
+        env x_l a_l
+    in
     let s1, t1' = type_infer env' t1 in
     let s2, t2' = type_infer (apply_env s1 env') t2 in
     let mty1 = mty_of (T.get_type t1') in
@@ -252,7 +272,9 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s = compose_subs s3 (compose_subs s2 s1) in
     s, T.mk_term
          (T.Fun(f, x_l, t1', t2', pot))
-         (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l, apply_m s mty1, apply_r (snd s) r)))
+         (generalize env (T.TFun(List.map (fun mty -> apply_m s mty) a_l,
+                                 apply_m s mty1,
+                                 apply_r (snd s) r)))
   |S.App(t1, t2_l) ->
     let mty = T.TAlpha(mk_var ()) in
     let s1, t1' = type_infer env t1 in
@@ -280,7 +302,7 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let env = apply_env s2 env in
     let s3, t3' = type_infer env t3 in
     let mty3 = mty_of (T.get_type t3') in
-    Printf.printf "((((((((((((((((((( IF TYPAGE DES BRANCHES TERMINE !!!!\n\n";
+    (* Printf.printf "((((((((((((((((((( IF TYPAGE DES BRANCHES TERMINE !!!!\n\n"; *)
     let s4 = mgu (apply_m s2 mty2) (apply_m s3 mty3) in
     let s = compose_subs s4 (compose_subs s3 (compose_subs s2 (compose_subs s1' s1))) in
     s, T.mk_term (T.If(t1', t2', t3')) (generalize env (apply_m s mty2))
@@ -362,7 +384,7 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s2 = mgu (apply_m s1 mty1) (T.TList(None, a1, T.RAlpha(mk_rgn ()))) in
     let s = compose_subs s2 s1 in
   let st, sr = s in
-  Printf.printf "\n\n\n&&&&&&&&&&&&& HD SUB (%s) :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" tmp (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions);
+  (* Printf.printf "\n\n\n&&&&&&&&&&&&& HD SUB (%s) :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" tmp (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions); *)
     s, T.mk_term (T.Hd(t1')) (generalize env a1)
   |S.Tl(t1) ->
     let s1, t1' = type_infer env t1 in
@@ -372,16 +394,9 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s = compose_subs s2 s1 in
     s, T.mk_term (T.Tl(t1')) (generalize env (apply_m s mty1))
   |S.Nil ->
-(*    let s1, t1' = type_infer env t1 in
-    let mty1 = mty_of (T.get_type t1') in
-    let tmp = mk_rgn () in
-    let r = T.RAlpha(tmp) in
-    let s2 = mgu (apply_m s1 mty1) (T.THnd(r)) in
-    let s = compose_subs s2 s1 in
-  let st, sr = s in
-  Printf.printf "-------------------NIL SUBSTITUTION (tmp = %s) TYPE :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" tmp (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions);
-    s, T.mk_term (T.Nil(t1')) (generalize env (T.TList(T.TAlpha(mk_var ()), apply_r (snd s) r)))*)
-    subs_empty, T.mk_term T.Nil (generalize env (T.TList(None, T.TAlpha(mk_var ()), T.RAlpha(mk_rgn ()))))
+    subs_empty, T.mk_term T.Nil (generalize env (T.TList(None,
+                                                         T.TAlpha(mk_var ()),
+                                                         T.RAlpha(mk_rgn ()))))
   |S.Cons(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -396,7 +411,8 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s4 = mgu (apply_m s mty2) (T.TList(None, apply_m s mty1, T.RAlpha(mk_rgn ()))) in
     let s5 = mgu (apply_m s mty3) (T.THnd(r)) in
     let s = compose_subs s5 (compose_subs s4 s) in
-    s, T.mk_term (T.Cons(t1', t2', t3')) (generalize env (apply_m s (T.TList(None, apply_m s mty1, r))))
+    s, T.mk_term (T.Cons(t1', t2', t3'))
+                 (generalize env (apply_m s (T.TList(None, apply_m s mty1, r))))
   |S.Ref(t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -451,13 +467,15 @@ Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_pol
     let s = compose_subs s2 s1 in
     s, T.mk_term (T.Sequence(t1', t2')) (generalize env (apply_m s mty2))
 
-let normalize_ty (T.TPoly(_, _, mty)) = T.TPoly(StrSet.elements (fv_mty mty), StrSet.elements (fr_mty mty), mty)
+let normalize_ty (T.TPoly(_, _, mty)) =
+  T.TPoly(StrSet.elements (fv_mty mty), StrSet.elements (fr_mty mty), mty)
 
 let iter_fun f x =
   let rec loop x old = if x = old then x else loop (f x) x in
   loop (f x) x
 
-let force_subs s (T.TPoly(alpha_l, rgn_l, mty)) = T.TPoly(alpha_l, rgn_l, apply_m s mty)
+let force_subs s (T.TPoly(alpha_l, rgn_l, mty)) =
+  T.TPoly(alpha_l, rgn_l, apply_m s mty)
 
 let rec subs_term s t =
   T.mk_term
@@ -471,7 +489,8 @@ let rec subs_term s t =
       |T.Fun(f, arg_l, t1, t2, pot) -> T.Fun(f, arg_l, subs_term s t1, subs_term s t2, pot)
       |T.App(t1, t_l) -> T.App(subs_term s t1, List.map (subs_term s) t_l)
       |T.If(t1, t2, t3) -> T.If(subs_term s t1, subs_term s t2, subs_term s t3)
-      |T.Match(t_match, t_nil, x, xs, t_cons) -> T.Match(subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)
+      |T.Match(t_match, t_nil, x, xs, t_cons) ->
+        T.Match(subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)
       |T.Let(x, t1, t2) -> T.Let(x, subs_term s t1, subs_term s t2)
       |T.Letrec(f, t1, t2) -> T.Letrec(f, subs_term s t1, subs_term s t2)
       |T.Pair(t1, t2, t3) -> T.Pair(subs_term s t1, subs_term s t2, subs_term s t3)
@@ -488,13 +507,12 @@ let rec subs_term s t =
       |T.Freergn(t1) -> T.Freergn(subs_term s t1)
       |T.Sequence(t1, t2) -> T.Sequence(subs_term s t1, subs_term s t2)
     )
-(*    (normalize_ty (iter_fun (apply s) (T.get_type t)))*)
     (normalize_ty (iter_fun (force_subs s) (T.get_type t)))
 
 let type_inference env t =
   let s, t = type_infer env t in
   let st, sr = s in
-  Printf.printf "SUBSTITUTION TYPE :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions);
+  (* Printf.printf "SUBSTITUTION TYPE :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions); *)
   subs_term s t
 
 let process t = type_inference StrMap.empty t

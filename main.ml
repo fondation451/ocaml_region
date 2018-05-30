@@ -77,11 +77,8 @@ let () =
   |Simpl.Error(str) ->
     eprintf "Simpl error : %s\n@." str;
     exit 1
-  (* |Region.Error(str) ->
-    eprintf "Region error : %s\n@." str;
-    exit 1
   |Check.Error(str) ->
     eprintf "Check error : %s\n@." str;
-    exit 1 *)
-(*  |_ ->
-    eprintf "Compilation error\n@.";*)
+    exit 1
+ |_ ->
+    eprintf "Compilation error\n@.";

@@ -10,7 +10,15 @@ let rec lift_type mty =
   |S.TUnit -> T.TUnit
   |S.TAlpha(a) -> T.TAlpha(a)
   |S.TFun(mty_l, mty1, r) ->
-    T.TFun([], List.map lift_type mty_l, lift_type mty1, r, T.empty_capabilities, T.empty_capabilities, T.empty_effects)
+    T.TFun(
+      [],
+      List.map lift_type mty_l,
+      lift_type mty1,
+      r,
+      T.empty_capabilities,
+      T.empty_capabilities,
+      T.empty_effects
+    )
   |S.TCouple(mty1, mty2, r) -> T.TCouple(lift_type mty1, lift_type mty2, r)
   |S.TList(i, mty1, r) -> T.TList(i, lift_type mty1, r)
   |S.TRef(mty1, r) -> T.TRef(lift_type mty1, r)
@@ -21,7 +29,8 @@ let fv_mty mty =
     match mty with
     |T.TInt |T.TBool |T.TUnit |T.THnd(_) -> out
     |T.TAlpha(a) -> StrSet.add a out
-    |T.TFun(_, mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
+    |T.TFun(_, mty_l, mty1, r, cin, cout, phie) ->
+      List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 out)
     |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 out
   in loop mty StrSet.empty
@@ -31,7 +40,8 @@ let fr_mty mty =
     match mty with
     |T.TInt |T.TBool |T.TUnit |T.TAlpha(_) -> out
     |T.THnd(r) -> StrSet.add r out
-    |T.TFun(_, mty_l, mty1, r, cin, cout, phie) -> List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
+    |T.TFun(_, mty_l, mty1, r, cin, cout, phie) ->
+      List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (StrSet.add r out))
     |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
@@ -43,11 +53,6 @@ let sub_cap c1 c2 =
     (fun (r, p) ->
       (p = T.Relaxed && T.cap_relaxed r c1) ||
       (p = T.Linear && T.cap r c1))
-(*    (fun (r, p) ->
-      (p = T.Relaxed && T.cap_relaxed r c1) ||
-      (p = T.Linear && (T.cap_linear r c1 || T.cap_relaxed r c1)) ||
-      (p = T.Used && T.cap r c1))*)
-(*    (fun (r, p) -> T.cap r c1)*)
     c2
 
 (* Construction CIN *)
@@ -63,7 +68,8 @@ let rec rgn_of t =
     StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
   |S.If(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
     StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
-  |S.App(t1, t_l) -> List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
+  |S.App(t1, t_l) ->
+    List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
   |S.Fun(_, _, t1, t2, _) |S.Ref(t1, t2) ->
     StrMap.union
       merge_rgn
@@ -83,7 +89,8 @@ let rec rgn_of t =
          |_ -> assert false))
 (* **** *)
 
-let generalize_cap c c_ref = T.cap_map (fun (r, cap) -> (r, try T.cap_find r c_ref with Not_found -> cap)) c
+let generalize_cap c c_ref =
+  T.cap_map (fun (r, cap) -> (r, try T.cap_find r c_ref with Not_found -> cap)) c
 
 
 (* Instanciation of regions in application *)
@@ -151,7 +158,10 @@ let rec instance_of_rgn r mty1 mty2 =
       Some(r2)
     else
       instance_of_rgn r mty1 mty1'
-  |_ -> raise (T.Check_Error(Printf.sprintf "instance_of_rgn %s %s %s" r (T.show_rcaml_type mty1) (T.show_rcaml_type mty2)))
+  |_ ->
+    raise (T.Error(Printf.sprintf "instance_of_rgn %s %s %s" r
+                                  (T.show_rcaml_type mty1)
+                                  (T.show_rcaml_type mty2)))
 
 let instance_of_rgn_l r_l mty1 mty2 =
   let s = List.fold_left
@@ -226,13 +236,13 @@ let rec merge_mty mty_out mty_checked =
         (rgn_subs mty2 mty2' StrMap.empty)
         mty_l mty_l'
     in
-    Printf.printf "DEBUG\n";
+    (* Printf.printf "DEBUG\n";
     List.iter (fun (r1, r2) -> Printf.printf "(%s, %s) ; " r1 r2) (StrMap.bindings s);
     Printf.printf "\n////DEBUG\n";
     print_cap cin "cin";
     print_cap (replace_cap s cin) "cin'";
     print_cap cout "cout";
-    print_cap (replace_cap s cout) "cout'";
+    print_cap (replace_cap s cout) "cout'"; *)
     T.TFun(
       StrMap.bindings s,
       List.map2 merge_mty mty_l mty_l',
@@ -257,13 +267,13 @@ let rec merge_mty mty_out mty_checked =
 
 
 let check_rgn r c =
-  Printf.printf "CHECK_RGN OF %s !!!!!\n\n" r;
+  (* Printf.printf "CHECK_RGN OF %s !!!!!\n\n" r; *)
   if T.cap_linear r c then
     T.remove_cap r c, T.effects_of [T.ERead(r)]
   else if T.cap_relaxed r c then
     c, T.effects_of [T.ERead(r)]
   else
-    raise (T.Check_Error (Printf.sprintf "No capabilities for region handler %s" r))
+    raise (T.Error (Printf.sprintf "No capabilities for region handler %s" r))
 
 let rec check_term env g c t =
   let te = S.get_term t in
@@ -271,8 +281,8 @@ let rec check_term env g c t =
   let a_l = S.get_alpha_l t in
   let r_l = S.get_rgn_l t in
 
-  print_cap c "c";
-  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t);
+  (* print_cap c "c";
+  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t); *)
   (* let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in *)
   let g' = List.fold_left (fun out r -> T.gamma_add r out) g r_l in
@@ -282,16 +292,16 @@ let rec check_term env g c t =
     |S.Bool(b), S.TBool -> T.Bool(b), T.TBool, g, c, T.empty_effects
     |S.Int(i), S.TInt -> T.Int(i), T.TInt, g, c, T.empty_effects
     |S.Var(v), _ -> begin
-      print_cap c "VAR__c";
+      (* print_cap c "VAR__c";
       print_gamma g "VAR__g";
-      Printf.printf "CHECKING OF %s\n\n\n" v;
+      Printf.printf "CHECKING OF %s\n\n\n" v; *)
       let mty' = try StrMap.find v env with Not_found -> lift_type mty in
       match mty' with
       |T.THnd(r) |T.TFun(_, _, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, r) ->
         if T.gamma_mem r g' then
           T.Var(v), mty', g, c, T.effects_of [T.ERead(r)]
         else
-          raise (T.Check_Error (Printf.sprintf "No capabilities for access to region %s" r))
+          raise (T.Error (Printf.sprintf "No capabilities for access to region %s" r))
       |_ -> T.Var(v), mty', g, c, T.empty_effects
     end
     |S.Binop(op, t1, t2), _ ->
@@ -321,20 +331,20 @@ let rec check_term env g c t =
         env arg_l mty_l
       in
       let cin = T.cap_of_strmap (rgn_of t1) in
-      print_cap cin "cin";
+      (* print_cap cin "cin"; *)
       let t1', g1, cout, phi_f = check_term env' g2 cin t1 in
-      print_cap cout "cout";
+      (* print_cap cout "cout"; *)
       let cin' = T.diff_cap cin (T.cap_of r_l) in
-      print_cap cin' "cin'";
+      (* print_cap cin' "cin'"; *)
       let cout' = T.diff_cap cout (T.cap_of r_l) in
-      print_cap cout' "cout'";
+      (* print_cap cout' "cout'"; *)
       if unrestricted cin g2 then
         T.Fun(f, arg_l, t1', t2', pot),
         T.TFun([], List.map lift_type mty_l, lift_type mty1, r, cin, cout, phi_f),
         g2, c3,
         T.merge_effects (T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2) phi3
       else
-        raise (T.Check_Error (Printf.sprintf "Error with function region behaviour %s" r))
+        raise (T.Error (Printf.sprintf "Error with function region behaviour %s" r))
     |S.App(t1, t_l), _ -> begin
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t_l', g2, c2, phi2 =
@@ -354,9 +364,9 @@ let rec check_term env g c t =
       Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_mty''); *)
       match T.get_type t1' with
       |T.TFun(_, arg_mty_l, mty_res, mty_r, cin, cout, phie) as f_mty ->
-        print_cap c2 "c2";
+        (* print_cap c2 "c2";
         print_cap cin "cin";
-        print_cap cout "cout";
+        print_cap cout "cout"; *)
   (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
         if sub_cap c2 cin then
           T.App(t1', t_l'),
@@ -365,7 +375,7 @@ let rec check_term env g c t =
           T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
           T.merge_effects phie (T.merge_effects phi1 phi2)
         else
-          raise (T.Check_Error (Printf.sprintf "Function call : capabilities not sub cap of cin"))
+          raise (T.Error (Printf.sprintf "Function call : capabilities not sub cap of cin"))
       |_ -> assert false
     end
     |S.If(t1, t2, t3), _ ->
@@ -442,7 +452,7 @@ let rec check_term env g c t =
           let t2', g2, c2, phi2 = check_term env g (T.add_cap r T.Relaxed c1) t2 in
           T.Aliasrgn(t1', t2'), lift_type mty, g2, T.add_cap r T.Linear c2, T.merge_effects phi1 phi2
         else
-          raise (T.Check_Error (Printf.sprintf "capability of %s not in c1" r))
+          raise (T.Error (Printf.sprintf "capability of %s not in c1" r))
       |_ -> assert false
     end
     |S.Freergn(t1), S.TUnit -> begin

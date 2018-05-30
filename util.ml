@@ -23,7 +23,9 @@ let mk_var =
   fun () -> incr cpt; (alpha.(!cpt mod 26))^(string_of_int (!cpt / 26))
 
 let mk_rgn = let cpt = ref (-1) in fun () -> incr cpt;
-  let out = "rgn"^(string_of_int !cpt) in Printf.printf "###################### CREATION %s ###################" out; out
+  let out = "rgn"^(string_of_int !cpt) in
+  (* Printf.printf "###################### CREATION %s ###################" out; *)
+  out
 
 let strmap_diff m1 m2 = StrMap.filter (fun k v -> StrMap.mem k m2) m1
 

@@ -2,7 +2,7 @@
 
 open Util
 
-exception Check_Error of string
+exception Error of string
 
 type rcaml_type =
   |TInt

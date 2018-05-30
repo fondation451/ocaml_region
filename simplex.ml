@@ -72,7 +72,7 @@ let add_line sim l bound =
 let compute sim l =
   let line = mk_line l in
   let sim, opt = Sim.Solve.maximize sim line in
-  Format.printf "The problem 'max %a' ...@." Sim.Core.P.print line;
+  (* Format.printf "The problem 'max %a' ...@." Sim.Core.P.print line; *)
 (*  begin*)
     match Sim.Result.get opt sim with
     |Sim.Core.Unknown     -> assert false

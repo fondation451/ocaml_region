@@ -22,7 +22,7 @@ let fv_term t =
       loop t1 (StrSet.remove x (loop t2 out))
   in
   let tmp = (loop t StrSet.empty) in
-  Printf.printf "MARDI DEBUG : %s\n\n" (strset_str tmp);
+  (* Printf.printf "MARDI DEBUG : %s\n\n" (strset_str tmp); *)
   tmp
 
 let rec concrete_rgn t =
@@ -72,7 +72,8 @@ let rec rgn_of t =
 let on_rgn r mty =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> false
-  |S.TFun(_, _, _, r', _, _, _) |S.TCouple(_, _, r') |S.TList(_, _, r') |S.TRef(_, r') |S.THnd(r') -> r = r'
+  |S.TFun(_, _, _, r', _, _, _) |S.TCouple(_, _, r') |S.TList(_, _, r')
+  |S.TRef(_, r') |S.THnd(r') -> r = r'
 
 let fun_name t =
   match S.get_term t with
@@ -105,7 +106,7 @@ let convert_line pot =
   -1 * bound, out
 
 let convert_to_simplex m vars lin_prog =
-  Printf.printf "%s :\n%s\n\n" m (H.show_integer_prog lin_prog);
+  (* Printf.printf "%s :\n%s\n\n" m (H.show_integer_prog lin_prog); *)
   let sim = Simplex.create () in
   let rec loop_var sim vars =
     match vars with
@@ -329,7 +330,13 @@ let process_r r_l cr_l t =
             if on_rgn r mty then
               let m = H.PPot(H.mk_pot' "fun" vars) in
               let fv_var = fv_term t1 in
-              let nb_fv = StrSet.cardinal (StrSet.remove f (List.fold_left (fun out arg -> StrSet.remove arg out) fv_var arg_l)) in
+              let nb_fv =
+                StrSet.cardinal
+                  (StrSet.remove f
+                    (List.fold_left
+                      (fun out arg -> StrSet.remove arg out)
+                      fv_var arg_l))
+              in
               let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(nb_fv * (cost_of RCLO))) in
               new_line::lines, m
             else
@@ -378,7 +385,7 @@ let process_r r_l cr_l t =
             try
              let r_sub_l = List.filter (fun r_sub -> mem_fun_pot r_sub (fun_name t1)) (find_rgn_sub r s) in
               (* let r_sub_l = [] in *)
-              Printf.printf "APPICATION SUB REGION %s -> %s\n" r ("[" ^ (List.fold_left (fun out r -> Printf.sprintf "%s, %s" out r) "" r_sub_l) ^ "]");
+              (* Printf.printf "APPICATION SUB REGION %s -> %s\n" r ("[" ^ (List.fold_left (fun out r -> Printf.sprintf "%s, %s" out r) "" r_sub_l) ^ "]"); *)
               let out1, n', n'' = List.fold_left
                 (fun (out1, n', n'') r_sub ->
                   let cr, dr, fun_lines = find_fun_pot r_sub (fun_name t1) in
@@ -396,7 +403,7 @@ let process_r r_l cr_l t =
                   in
                   let cr, sub = fresh_names_p cr vars sub in
                   let dr, sub = fresh_names_p dr vars sub in
-                  Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr) (H.show_pot dr);
+                  (* Printf.printf "APPLICATION OF %s with coef %s, %s\n" (fun_name t1) (H.show_pot cr) (H.show_pot dr); *)
                   (List.rev_append ((H.PAdd(H.PAdd(H.PAdd(n'', cr), H.PMin n'), H.PMin dr))::fun_lines) out1,
                   n'',
                   H.PPot(H.mk_pot vars)))
@@ -496,7 +503,7 @@ let process_r r_l cr_l t =
   saved_state := (process_t t lin_prog)::(!saved_state);
   let s_l = List.map (fun lp -> compute_lin_prog lp memories) !saved_state in
   let tmp = List.map (fun s -> "blabla", s) s_l in
-  List.iter (fun (r, s) -> Printf.printf "%s:%d\n\n" r s) tmp;
+  (* List.iter (fun (r, s) -> Printf.printf "%s:%d\n\n" r s) tmp; *)
   List.fold_left max 0 s_l
 
 let process t =
