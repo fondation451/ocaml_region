@@ -93,18 +93,18 @@ let merge_some s1 s2 =
   |Some(out), None |None, Some(out) -> Some(out)
   |Some(out1), Some(out2) -> if out1 = out2 then Some(out1) else assert false
 
+let replace s r = try StrMap.find r s with Not_found -> r
+let replace_cap s c = T.cap_map (fun (r, p) -> (replace s r, p)) c
+let replace_effects s phi =
+  T.effects_map
+    (fun e ->
+      match e with
+      |T.ERead(r) -> T.ERead(replace s r)
+      |T.EWrite(r) -> T.EWrite(replace s r)
+      |T.EAlloc(r) -> T.EAlloc(replace s r))
+    phi
+
 let rec replace_rgn s mty =
-  let replace s r = try StrMap.find r s with Not_found -> r in
-  let replace_cap s c = T.cap_map (fun (r, p) -> (replace s r, p)) c in
-  let replace_effects s phi =
-    T.effects_map
-      (fun e ->
-        match e with
-        |T.ERead(r) -> T.ERead(replace s r)
-        |T.EWrite(r) -> T.EWrite(replace s r)
-        |T.EAlloc(r) -> T.EAlloc(replace s r))
-      phi
-  in
   match mty with
   |T.TInt|T.TBool |T.TUnit |T.TAlpha(_) -> mty
   |T.THnd(r) -> T.THnd(replace s r)
@@ -200,6 +200,60 @@ let print_gamma g name =
     name
     ("[" ^ (List.fold_left (fun out r -> Printf.sprintf "%s, %s" out r) "" g) ^ "]")
 
+let rec rgn_subs mty1 mty2 out =
+  match mty1, mty2 with
+  |S.TFun(mty_l, mty2, r), T.TFun(mty_l', mty2', r', cin, cout, phi) ->
+    List.fold_left2
+      (fun out mty1 mty1' -> rgn_subs mty1 mty1' out)
+      (rgn_subs mty2 mty2' (StrMap.add r' r out))
+      mty_l mty_l'
+  |S.TCouple(mty1, mty2, r), T.TCouple(mty1', mty2', r') ->
+    rgn_subs mty1 mty1' (rgn_subs mty2 mty2' (StrMap.add r' r
+     out))
+  |S.TList(_, mty1, r), T.TList(_, mty1', r')
+  |S.TRef(mty1, r), T.TRef(mty1', r') ->
+    rgn_subs mty1 mty1' (StrMap.add r' r out)
+  |S.THnd(r), T.THnd(r') -> StrMap.add r' r out
+  |_ -> out
+
+let rec merge_mty mty_out mty_checked =
+  match mty_out, mty_checked with
+  |S.TFun(mty_l, mty2, r), T.TFun(mty_l', mty2', _, cin, cout, phi) ->
+    let s =
+      List.fold_left2
+        (fun out mty1 mty1' -> rgn_subs mty1 mty1' out)
+        (rgn_subs mty2 mty2' StrMap.empty)
+        mty_l mty_l'
+    in
+    Printf.printf "DEBUG\n";
+    List.iter (fun (r1, r2) -> Printf.printf "(%s, %s) ; " r1 r2) (StrMap.bindings s);
+    Printf.printf "\n////DEBUG\n";
+    print_cap cin "cin";
+    print_cap (replace_cap s cin) "cin'";
+    print_cap cout "cout";
+    print_cap (replace_cap s cout) "cout'";
+    T.TFun(
+      List.map2 merge_mty mty_l mty_l',
+      merge_mty mty2 mty2',
+      r,
+      replace_cap s cin,
+      replace_cap s cout,
+      replace_effects s phi
+    )
+  |S.TCouple(mty1, mty2, r), T.TCouple(mty1', mty2', _) ->
+    T.TCouple(merge_mty mty1 mty1', merge_mty mty2 mty2', r)
+  |S.TList(ls, mty1, r), T.TList(_, mty1', _) ->
+    T.TList(ls, merge_mty mty1 mty1', r)
+  |S.TRef(mty1, r), T.TRef(mty1', _) ->
+    T.TRef(merge_mty mty1 mty1', r)
+  |S.THnd(r), T.THnd(r') -> T.THnd(r)
+  |S.TInt, _ -> T.TInt
+  |S.TBool, _ -> T.TBool
+  |S.TUnit, _ -> T.TUnit
+  |S.TAlpha(a), _ -> T.TAlpha(a)
+  |_ -> mty_checked
+
+
 let check_rgn r c =
   Printf.printf "CHECK_RGN OF %s !!!!!\n\n" r;
   if T.cap_linear r c then
@@ -291,19 +345,19 @@ let rec check_term env g c t =
             head'::t_l_out, g_out, c_out, T.merge_effects phi' phi_out
         in loop g1 c1 t_l
       in
-      let r_l', s = inst_mty r_l (T.get_type t1') (List.map T.get_type t_l') in
-      let s' = StrMap.bindings s in
-      let t1_mty'' = replace_rgn s (T.get_type t1') in
-      let t1'' = T.mk_term (T.get_term t1') t1_mty'' a_l r_l' in
-      Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_mty'');
-      match T.get_type t1'' with
+      (* let r_l', s = inst_mty r_l (T.get_type t1') (List.map T.get_type t_l') in *)
+      (* let s' = StrMap.bindings s in *)
+      (* let t1_mty'' = replace_rgn s (T.get_type t1') in *)
+      (* let t1'' = T.mk_term (T.get_term t1') t1_mty'' a_l r_l' in
+      Printf.printf "AAAAAAAAAAAAAAAQQQQQQQQQQQQQQQQUUUUUUUUUUUUUUUUUIIIIIIIIIIIIIIIII %s\n\n\n\n\n" (T.show_rcaml_type t1_mty''); *)
+      match T.get_type t1' with
       |T.TFun(arg_mty_l, mty_res, mty_r, cin, cout, phie) as f_mty ->
         print_cap c2 "c2";
         print_cap cin "cin";
         print_cap cout "cout";
   (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
         if sub_cap c2 cin then
-          T.App(s', t1'', t_l'),
+          T.App([], t1', t_l'),
           lift_type mty,
           g2,
           T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
@@ -402,7 +456,7 @@ let rec check_term env g c t =
       T.Sequence(t1', t2'), lift_type mty, g2, c2, T.merge_effects phi1 phi2
     |_ -> assert false
   in
-  T.mk_term te' mty' a_l r_l, g_out, c_out, phi_out
+  T.mk_term te' (merge_mty mty mty') a_l r_l, g_out, c_out, phi_out
 
 let process t =
   let t', _, _, _ = check_term StrMap.empty T.empty_gamma T.empty_capabilities t in

@@ -638,7 +638,7 @@ let rec process_ls env_f env t =
       let t2' = process_ls env_f env t2 in
       T.Sequence(process_ls env_f env t1, t2'), T.get_type t2'
   in
-  T.mk_term te' mty' alpha_l rgn_l
+  T.mk_term te' (merge_mty mty mty') alpha_l rgn_l
 
 let process t =
   let t' = process_ls StrMap.empty StrMap.empty (lift_t t) in
