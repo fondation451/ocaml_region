@@ -80,5 +80,5 @@ let () =
   |Check.Error(str) ->
     eprintf "Check error : %s\n@." str;
     exit 1
- |_ ->
-    eprintf "Compilation error\n@.";
+ (* |_ ->
+    eprintf "Compilation error\n@."; *)

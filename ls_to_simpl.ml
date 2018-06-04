@@ -76,16 +76,18 @@ let rec process_t env t =
       |S.Fun(f, arg_l, t1, t2, f_pot) -> begin
         match mty' with
         |T.TFun(arg_l_ty, _, _) ->
+          let env' =
+            List.fold_left2
+              (fun out x x_ty -> StrMap.add x x_ty out)
+              env arg_l arg_l_ty
+          in
           T.Fun
             (
               f,
               arg_l,
-              process_t env t1,
+              process_t env' t1,
               process_t env t2,
-              convert_fun_pot
-                f_pot
-                (List.fold_left2 (fun out x x_ty -> StrMap.add x x_ty out) env arg_l arg_l_ty)
-                (List.mapi (fun i v -> v, i) arg_l)
+              convert_fun_pot f_pot env' (List.mapi (fun i v -> v, i) arg_l)
             )
         |_ -> assert false
       end

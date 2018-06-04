@@ -106,7 +106,7 @@ let convert_line pot =
   -1 * bound, out
 
 let convert_to_simplex m vars lin_prog =
-  (* Printf.printf "%s :\n%s\n\n" m (H.show_integer_prog lin_prog); *)
+  Printf.printf "%s :\n%s\n\n" m (H.show_integer_prog lin_prog);
   let sim = Simplex.create () in
   let rec loop_var sim vars =
     match vars with
@@ -311,6 +311,7 @@ let process_r r_l cr_l t =
   Printf.printf "OUT\n";
   StrMap.iter (fun r (lines, n) -> Printf.printf "%s : %s\n%s\n" r n (H.show_integer_prog lines)) out;
   Printf.printf "\n\n";*)
+  (* Printf.printf "--------- NO SIDE PROCCES ------------\n%s\n\n" (S.show_typed_term t); *)
     let te = S.get_term t in
     let mty = S.get_type t in
     match te with
@@ -323,7 +324,7 @@ let process_r r_l cr_l t =
         r_cost
     |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) -> process_t t2 (process_t t1 r_cost)
     |S.Not(t1) |S.Neg(t1) -> process_t t1 r_cost
-    |S.Fun(f, arg_l, t1, t2, pot) when no_side_effect mty -> begin
+    |S.Fun(f, arg_l, t1, t2, pot) (*when no_side_effect mty*) -> begin
       let r_cost =
         StrMap.mapi
           (fun r (lines, n) ->

@@ -89,7 +89,7 @@ let apply_env s env = StrMap.map (apply s) env
 let generalize env mty =
   T.TPoly(
     StrSet.elements (StrSet.diff (fv_mty mty) (fv_env env)),
-    StrSet.elements (fr_mty mty),
+    StrSet.elements (StrSet.diff (fr_mty mty) (fr_env env)),
     mty
   )
 
@@ -211,7 +211,7 @@ let rec type_infer env t =
   match t with
   |S.Var(var) -> begin
     try
-(* Printf.printf "@@@@@@@@@@ VAR ENV\n%s\n\n" (strmap_str env T.show_rcaml_type_poly); *)
+Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_type_poly);
       subs_empty, T.mk_term (T.Var(var)) (generalize env (instanciate (StrMap.find var env)))
     with Not_found -> raise (T.Error "Type_infer")
   end
@@ -433,7 +433,9 @@ let rec type_infer env t =
     let s = compose_subs s2 s1 in
     let mty1 = mty_of (T.get_type t1') in
     let mty2 = mty_of (T.get_type t2') in
-    let s3 = mgu (apply_m s mty1) (T.TRef(apply_m s mty2, T.RAlpha(mk_rgn ()))) in
+    let r = T.RAlpha(mk_rgn ()) in
+    Printf.printf "Assign : %s\n" (T.show_regions r);
+    let s3 = mgu (T.TRef(apply_m s mty2, r)) (apply_m s mty1) in
     let s = compose_subs s3 s in
     s, T.mk_term (T.Assign(t1', t2')) (generalize env T.TUnit)
   |S.Deref(t1) ->
@@ -512,7 +514,7 @@ let rec subs_term s t =
 let type_inference env t =
   let s, t = type_infer env t in
   let st, sr = s in
-  (* Printf.printf "SUBSTITUTION TYPE :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions); *)
+  Printf.printf "SUBSTITUTION TYPE :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" (strmap_str st T.show_rcaml_type) (strmap_str sr T.show_regions);
   subs_term s t
 
 let process t = type_inference StrMap.empty t

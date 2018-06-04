@@ -292,10 +292,14 @@ let rec check_term env g c t =
     |S.Bool(b), S.TBool -> T.Bool(b), T.TBool, g, c, T.empty_effects
     |S.Int(i), S.TInt -> T.Int(i), T.TInt, g, c, T.empty_effects
     |S.Var(v), _ -> begin
-      (* print_cap c "VAR__c";
+      Printf.printf "CHECKING OF %s\n\n" (S.show_typed_term t);
+      StrMap.iter
+        (fun x mty_x -> Printf.printf "  %s : %s\n" x (T.show_rcaml_type mty_x))
+        env;
+      print_cap c "VAR__c";
       print_gamma g "VAR__g";
-      Printf.printf "CHECKING OF %s\n\n\n" v; *)
       let mty' = try StrMap.find v env with Not_found -> lift_type mty in
+      Printf.printf "TYPE %s\n\n\n" (T.show_rcaml_type mty');
       match mty' with
       |T.THnd(r) |T.TFun(_, _, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, r) ->
         if T.gamma_mem r g' then
@@ -432,9 +436,10 @@ let rec check_term env g c t =
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
       let phi = T.merge_effects phi1 phi2 in
       T.Ref(t1', t2'), lift_type mty, g2, c2, phi
-    |S.Assign(t1, t2), S.TRef(_, r) ->
+    |S.Assign(t1, t2), S.TUnit ->
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
+      let (T.TRef(_, r)) = T.get_type t1' in
       let phi = T.merge_effects (T.effects_of [T.EWrite(r)]) (T.merge_effects phi1 phi2) in
       T.Assign(t1', t2'), lift_type mty, g2, c2, phi
     |S.Deref(t1), _ ->
@@ -466,7 +471,9 @@ let rec check_term env g c t =
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
       T.Sequence(t1', t2'), lift_type mty, g2, c2, T.merge_effects phi1 phi2
-    |_ -> assert false
+    |_ ->
+      Printf.printf "%s\n" (S.show_typed_term t);
+      assert false
   in
   T.mk_term te' (merge_mty mty mty') a_l r_l, g_out, c_out, phi_out
 

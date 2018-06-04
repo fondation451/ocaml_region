@@ -1,0 +1,39 @@
+(*
+  Nicolas ASSOUAD
+
+  Test function for memory consumption analysis
+  Rev with ref
+
+*)
+
+let rgn0 = newrgn () in
+let rgn1 = newrgn () in
+let rgn2 = newrgn () in
+
+aliasrgn rgn0 in
+
+let rec rev l r =
+  let out = ref Nil @ r in
+  let rec loop l =
+    { r: _length(l) * rcons -> 0 }
+    match l with
+    |Nil -> ()
+    |Cons x xs -> begin
+      out := Cons x (!out) @ r;
+      loop xs
+    end
+  @
+    rgn0
+  in begin
+    loop l;
+    !out
+  end
+@
+  rgn0
+in
+
+aliasrgn rgn1 in
+aliasrgn rgn2 in
+let l1 = [0 ; 1 ; 2 ; 3] @ rgn1 in
+let l2 = rev l1 rgn2 in
+()
