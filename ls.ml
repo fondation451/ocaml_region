@@ -12,7 +12,7 @@ type rcaml_type = Type.rcaml_type =
   |TFun of rcaml_type list * rcaml_type * regions
   |TCouple of rcaml_type * rcaml_type * regions
   |TList of list_sized * rcaml_type * regions
-  |TRef of rcaml_type * regions
+  |TRef of int * rcaml_type * regions
   |THnd of regions
 
 and regions = Type.regions =

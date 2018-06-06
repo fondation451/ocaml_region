@@ -14,7 +14,7 @@ type rcaml_type =
            capabilities * capabilities * effects
   |TCouple of rcaml_type * rcaml_type * regions
   |TList of list_sized * rcaml_type * regions
-  |TRef of rcaml_type * regions
+  |TRef of int * rcaml_type * regions
   |THnd of regions
 
 and regions = Simpl.regions

@@ -17,7 +17,7 @@ let fv_mty mty =
     |T.TFun(mty_l, mty2, _) -> List.fold_left (fun out mty -> loop mty out) (loop mty2 out) mty_l
     |T.TCouple(mty1, mty2, _) -> loop mty1 (loop mty2 out)
     |T.TList(_, mty1, _) -> loop mty1 out
-    |T.TRef(mty1, _) -> loop mty1 out
+    |T.TRef(_, mty1, _) -> loop mty1 out
   in loop mty StrSet.empty
 
 let fv_ty (T.TPoly(alpha_l, _, mty)) = StrSet.diff (fv_mty mty) (StrSet.of_list alpha_l)
@@ -42,7 +42,7 @@ let fr_mty mty =
     |T.TFun(mty_l, mty2, r) ->
       List.fold_left (fun out mty -> loop mty out) (loop mty2 (fr_r r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (fr_r r out))
-    |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 (fr_r r out)
+    |T.TList(_, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 (fr_r r out)
   in loop mty StrSet.empty
 
 let fr_ty (T.TPoly(_, rgn_l, mty)) = StrSet.diff (fr_mty mty) (StrSet.of_list rgn_l)
@@ -64,7 +64,7 @@ let rec apply_m s mty =
     T.TFun(List.map (fun mty -> apply_m s mty) mty_l, apply_m s mty2, apply_r sr r)
   |T.TCouple(mty1, mty2, r) -> T.TCouple(apply_m s mty1, apply_m s mty2, apply_r sr r)
   |T.TList(ls, mty1, r) -> T.TList(ls, apply_m s mty1, apply_r sr r)
-  |T.TRef(mty1, r) -> T.TRef(apply_m s mty1, apply_r sr r)
+  |T.TRef(id, mty1, r) -> T.TRef(id, apply_m s mty1, apply_r sr r)
 
 let remove_subs alpha_l rgn_l s =
   let st, sr = s in
@@ -160,7 +160,7 @@ let rec mgu mty1 mty2 =
     let s2 = mgu (apply_m s1 mty2) (apply_m s1 mty2') in
     let s3 = rgnbind r r' in
     compose_subs s3 (compose_subs s1 s2)
-  |T.TList(_, mty1, r), T.TList(_, mty1', r') |T.TRef(mty1, r), T.TRef(mty1', r') ->
+  |T.TList(_, mty1, r), T.TList(_, mty1', r') |T.TRef(_, mty1, r), T.TRef(_, mty1', r') ->
     let s1 = mgu mty1 mty1' in
     let s2 = rgnbind r r' in
     compose_subs s1 s2
@@ -424,7 +424,7 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let s = compose_subs s2 s1 in
     let s3 = mgu (apply_m s mty2) (T.THnd(r)) in
     let s = compose_subs s3 s in
-    s, T.mk_term (T.Ref(t1', t2')) (generalize env (apply_m s (T.TRef(apply_m s mty1, r))))
+    s, T.mk_term (T.Ref(t1', t2')) (generalize env (apply_m s (T.TRef(0, apply_m s mty1, r))))
   |S.Assign(t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -435,7 +435,7 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let mty2 = mty_of (T.get_type t2') in
     let r = T.RAlpha(mk_rgn ()) in
     Printf.printf "Assign : %s\n" (T.show_regions r);
-    let s3 = mgu (T.TRef(apply_m s mty2, r)) (apply_m s mty1) in
+    let s3 = mgu (T.TRef(0, apply_m s mty2, r)) (apply_m s mty1) in
     let s = compose_subs s3 s in
     s, T.mk_term (T.Assign(t1', t2')) (generalize env T.TUnit)
   |S.Deref(t1) ->
@@ -443,7 +443,7 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let mty1 = mty_of (T.get_type t1') in
     let tmp = mk_var () in
     let a1 = T.TAlpha(tmp) in
-    let s2 = mgu (apply_m s1 mty1) (T.TRef(a1, T.RAlpha(mk_rgn ()))) in
+    let s2 = mgu (apply_m s1 mty1) (T.TRef(0, a1, T.RAlpha(mk_rgn ()))) in
     let s = compose_subs s2 s1 in
     s, T.mk_term (T.Deref(t1')) (generalize env a1)
   |S.Newrgn -> subs_empty, T.mk_term T.Newrgn (generalize env (T.THnd(T.RRgn(mk_rgn ()))))

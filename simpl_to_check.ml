@@ -21,7 +21,7 @@ let rec lift_type mty =
     )
   |S.TCouple(mty1, mty2, r) -> T.TCouple(lift_type mty1, lift_type mty2, r)
   |S.TList(i, mty1, r) -> T.TList(i, lift_type mty1, r)
-  |S.TRef(mty1, r) -> T.TRef(lift_type mty1, r)
+  |S.TRef(id, mty1, r) -> T.TRef(id, lift_type mty1, r)
   |S.THnd(r) -> T.THnd(r)
 
 let fv_mty mty =
@@ -32,7 +32,7 @@ let fv_mty mty =
     |T.TFun(_, mty_l, mty1, r, cin, cout, phie) ->
       List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 out)
-    |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 out
+    |T.TList(_, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 out
   in loop mty StrSet.empty
 
 let fr_mty mty =
@@ -43,7 +43,7 @@ let fr_mty mty =
     |T.TFun(_, mty_l, mty1, r, cin, cout, phie) ->
       List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (StrSet.add r out))
-    |T.TList(_, mty1, r) |T.TRef(mty1, r) -> loop mty1 (StrSet.add r out)
+    |T.TList(_, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
 
 let unrestricted c g = T.cap_forall (fun (r, cap) -> not (T.gamma_mem r g) || (cap = T.Relaxed)) c
@@ -128,7 +128,7 @@ let rec replace_rgn s mty =
       )
   |T.TCouple(mty1, mty2, r) -> T.TCouple(replace_rgn s mty1, replace_rgn s mty2, replace s r)
   |T.TList(i, mty1, r) -> T.TList(i, replace_rgn s mty1, replace s r)
-  |T.TRef(mty1, r) -> T.TRef(replace_rgn s mty1, replace s r)
+  |T.TRef(id, mty1, r) -> T.TRef(id, replace_rgn s mty1, replace s r)
 
 let rec instance_of_rgn r mty1 mty2 =
   match mty1, mty2 with
@@ -153,7 +153,7 @@ let rec instance_of_rgn r mty1 mty2 =
       Some(r2)
     else
       merge_some (instance_of_rgn r mty1 mty1') (instance_of_rgn r mty2 mty2')
-  |T.TList(_, mty1, r1), T.TList(_, mty1', r2) |T.TRef(mty1, r1), T.TRef(mty1', r2) ->
+  |T.TList(_, mty1, r1), T.TList(_, mty1', r2) |T.TRef(_, mty1, r1), T.TRef(_, mty1', r2) ->
     if r = r1 then
       Some(r2)
     else
@@ -222,7 +222,7 @@ let rec rgn_subs mty1 mty2 out =
     rgn_subs mty1 mty1' (rgn_subs mty2 mty2' (StrMap.add r' r
      out))
   |S.TList(_, mty1, r), T.TList(_, mty1', r')
-  |S.TRef(mty1, r), T.TRef(mty1', r') ->
+  |S.TRef(_, mty1, r), T.TRef(_, mty1', r') ->
     rgn_subs mty1 mty1' (StrMap.add r' r out)
   |S.THnd(r), T.THnd(r') -> StrMap.add r' r out
   |_ -> out
@@ -256,8 +256,8 @@ let rec merge_mty mty_out mty_checked =
     T.TCouple(merge_mty mty1 mty1', merge_mty mty2 mty2', r)
   |S.TList(ls, mty1, r), T.TList(_, mty1', _) ->
     T.TList(ls, merge_mty mty1 mty1', r)
-  |S.TRef(mty1, r), T.TRef(mty1', _) ->
-    T.TRef(merge_mty mty1 mty1', r)
+  |S.TRef(id, mty1, r), T.TRef(_, mty1', _) ->
+    T.TRef(id, merge_mty mty1 mty1', r)
   |S.THnd(r), T.THnd(r') -> T.THnd(r)
   |S.TInt, _ -> T.TInt
   |S.TBool, _ -> T.TBool
@@ -292,16 +292,16 @@ let rec check_term env g c t =
     |S.Bool(b), S.TBool -> T.Bool(b), T.TBool, g, c, T.empty_effects
     |S.Int(i), S.TInt -> T.Int(i), T.TInt, g, c, T.empty_effects
     |S.Var(v), _ -> begin
-      Printf.printf "CHECKING OF %s\n\n" (S.show_typed_term t);
+(*      Printf.printf "CHECKING OF %s\n\n" (S.show_typed_term t);
       StrMap.iter
         (fun x mty_x -> Printf.printf "  %s : %s\n" x (T.show_rcaml_type mty_x))
-        env;
+        env; 
       print_cap c "VAR__c";
-      print_gamma g "VAR__g";
+      print_gamma g "VAR__g"; *)
       let mty' = try StrMap.find v env with Not_found -> lift_type mty in
-      Printf.printf "TYPE %s\n\n\n" (T.show_rcaml_type mty');
+(*      Printf.printf "TYPE %s\n\n\n" (T.show_rcaml_type mty'); *)
       match mty' with
-      |T.THnd(r) |T.TFun(_, _, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, r) ->
+      |T.THnd(r) |T.TFun(_, _, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, _, r) ->
         if T.gamma_mem r g' then
           T.Var(v), mty', g, c, T.effects_of [T.ERead(r)]
         else
@@ -439,7 +439,7 @@ let rec check_term env g c t =
     |S.Assign(t1, t2), S.TUnit ->
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
-      let (T.TRef(_, r)) = T.get_type t1' in
+      let (T.TRef(_, _, r)) = T.get_type t1' in
       let phi = T.merge_effects (T.effects_of [T.EWrite(r)]) (T.merge_effects phi1 phi2) in
       T.Assign(t1', t2'), lift_type mty, g2, c2, phi
     |S.Deref(t1), _ ->

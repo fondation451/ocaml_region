@@ -61,7 +61,7 @@ let rec list_returned mty =
   |T.TFun(mty_l, mty2, _) ->
     (List.exists list_returned mty_l) || list_returned mty2
   |T.TCouple(mty1, mty2, _) -> (list_returned mty1) || (list_returned mty2)
-  |T.TRef(mty1, _) -> list_returned mty1
+  |T.TRef(_, mty1, _) -> list_returned mty1
   |T.TList(_, _, _) -> true
   |_ -> false
 
@@ -73,12 +73,14 @@ let rec merge_mty mty_out mty_ls =
     T.TCouple(merge_mty mty1 mty1', merge_mty mty2 mty2', r)
   |T.TList(_, mty1, r), T.TList(ls, mty1', _) ->
     T.TList(ls, merge_mty mty1 mty1', r)
-  |T.TRef(mty1, r), T.TRef(mty1', _) ->
-    T.TRef(merge_mty mty1 mty1', r)
+  |T.TRef(_, mty1, r), T.TRef(id, mty1', _) ->
+    T.TRef(id, merge_mty mty1 mty1', r)
   |_ -> mty_out
 
+let ref_env = Hashtbl.create 10
+
 let rec process_ls env_f env t =
-  (* Printf.printf "--------- LS PROCCES ------------\n%s\n\n" (T.show_typed_term t); *)
+   Printf.printf "--------- LS PROCCES ------------\n%s\n\n" (T.show_typed_term t);
   let te = T.get_term t in
   let mty = T.get_type t in
   let alpha_l = T.get_alpha_l t in
@@ -118,7 +120,7 @@ let rec process_ls env_f env t =
       let t2_l' =
         List.fold_right (fun t2 t2_l' -> (process_ls env_f env t2)::t2_l') t2_l []
       in
-      if list_returned mty then
+      if list_returned (T.get_type t1') then
         let (arg_l, t_fun) =
           match T.get_term t1' with
           |T.Var(v) -> StrMap.find v env_f
@@ -134,9 +136,11 @@ let rec process_ls env_f env t =
                 (T.get_rgn_l out))
             arg_l t2_l' t_fun
         in
+        Printf.printf "OKK CA VA \n";
         T.App(t1', t2_l'), merge_mty mty (T.get_type (process_ls env_f env tmp))
       else
-        T.App(t1', t2_l'), mty
+      ( Printf.printf "NUL !!!\n";
+        T.App(t1', t2_l'), mty)
     end
     |T.If(t1, t2, t3) ->
       let t3' = process_ls env_f env t3 in
@@ -208,21 +212,33 @@ let rec process_ls env_f env t =
       let t2' = process_ls env_f env t2 in
       let mty1 = T.get_type t1' in
       let r = rgn_of t2' in
-      T.Ref(t1', t2'), T.TRef(mty1, r)
-    |T.Assign(t1, t2) -> T.Assign(process_ls env_f env t1, process_ls env_f env t2), T.TUnit
+      let id = mk_id () in
+      Hashtbl.replace ref_env id mty1;
+      T.Ref(t1', t2'), T.TRef(id, mty1, r)
+    |T.Assign(t1, t2) ->
+      let t1' = process_ls env_f env t1 in
+      let t2' = process_ls env_f env t2 in
+      let (T.TRef(id, _, _)) = T.get_type t1' in
+      Hashtbl.replace ref_env id (T.get_type t2');
+      Printf.printf "HASH TABLE REF\n";
+      Hashtbl.iter (fun id mty -> Printf.printf "%d : %s\n" id (T.show_rcaml_type mty)) ref_env;
+      T.Assign(t1', t2'), T.TUnit
     |T.Deref(t1) ->
       let t1' = process_ls env_f env t1 in
-      let (T.TRef(mty', _)) = T.get_type t1' in
-      T.Deref(t1'), mty'
-    |T.Newrgn ->
-    T.Newrgn, mty
+      let (T.TRef(id, _, _)) = T.get_type t1' in
+      Printf.printf "HASH TABLE REF\n";
+      Hashtbl.iter (fun id mty -> Printf.printf "%d : %s\n" id (T.show_rcaml_type mty)) ref_env;
+      T.Deref(t1'), Hashtbl.find ref_env id
+    |T.Newrgn -> T.Newrgn, mty
     |T.Aliasrgn(t1, t2) ->
+      let t1' = process_ls env_f env t1 in
       let t2' = process_ls env_f env t2 in
-      T.Aliasrgn(process_ls env_f env t1, t2'), T.get_type t2'
+      T.Aliasrgn(t1', t2'), T.get_type t2'
     |T.Freergn(t1) -> T.Freergn(process_ls env_f env t1), T.TUnit
     |T.Sequence(t1, t2) ->
+      let t1' = process_ls env_f env t1 in
       let t2' = process_ls env_f env t2 in
-      T.Sequence(process_ls env_f env t1, t2'), T.get_type t2'
+      T.Sequence(t1', t2'), T.get_type t2'
   in
   T.mk_term te' (merge_mty mty mty') alpha_l rgn_l
 

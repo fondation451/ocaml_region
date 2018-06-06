@@ -19,7 +19,7 @@ let rec convert_mty mty =
   |S.TCouple(mty1, mty2, r) ->
     T.TCouple(convert_mty mty1, convert_mty mty2, simpl_r r)
   |S.TList(ls, mty1, r) -> T.TList(simpl_ls ls, convert_mty mty1, simpl_r r)
-  |S.TRef(mty1, r) -> T.TRef(convert_mty mty1, simpl_r r)
+  |S.TRef(id, mty1, r) -> T.TRef(id, convert_mty mty1, simpl_r r)
   |S.THnd(r) -> T.THnd(simpl_r r)
 
 let region_of_mty mty =

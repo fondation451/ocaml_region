@@ -16,6 +16,8 @@ let strset_str strset =
 let strmap_str strmap val_str =
   "[" ^ (StrMap.fold (fun a v out -> out ^ (Printf.sprintf "%s : %s, " a (val_str v))) strmap "") ^ "]"
 
+let mk_id = let cpt = ref (-1) in fun () -> incr cpt; !cpt
+
 let mk_var =
   let alpha = [|"a" ; "b" ; "c" ; "d" ; "e" ; "f" ; "g" ; "h" ; "i" ; "j" ; "k" ; "l" ; "m" ;
                 "n" ; "o" ; "p" ; "q" ; "r" ; "s" ; "t" ; "u" ; "v" ; "w" ; "x" ; "y" ; "z" |] in
