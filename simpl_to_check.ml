@@ -66,7 +66,7 @@ let rec rgn_of t =
   |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
   |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
     StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
-  |S.If(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
+  |S.If(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) ->
     StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
   |S.App(t1, t_l) ->
     List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
@@ -295,7 +295,7 @@ let rec check_term env g c t =
 (*      Printf.printf "CHECKING OF %s\n\n" (S.show_typed_term t);
       StrMap.iter
         (fun x mty_x -> Printf.printf "  %s : %s\n" x (T.show_rcaml_type mty_x))
-        env; 
+        env;
       print_cap c "VAR__c";
       print_gamma g "VAR__g"; *)
       let mty' = try StrMap.find v env with Not_found -> lift_type mty in
@@ -387,11 +387,11 @@ let rec check_term env g c t =
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
       let t3', g3, c3, phi3 = check_term env g1 c1 t3 in
       T.If(t1', t2', t3'), lift_type mty, g3, c3, T.merge_effects phi1 (T.merge_effects phi2 phi3)
-    |S.Match(t_match, t_nil, x, xs, t_cons), _ ->
+    |S.MatchList(t_match, t_nil, x, xs, t_cons), _ ->
       let t_match', g1, c1, phi1 = check_term env g c t_match in
       let t_nil', g2, c2, phi2 = check_term env g1 c1 t_nil in
       let t_cons', g3, c3, phi3 = check_term env g1 c1 t_cons in
-      T.Match(t_match', t_nil', x, xs, t_cons'), lift_type mty,
+      T.MatchList(t_match', t_nil', x, xs, t_cons'), lift_type mty,
       g3, c3,
       T.merge_effects phi1 (T.merge_effects phi2 phi3)
     |S.Let(x, t1, t2), _ ->

@@ -104,7 +104,7 @@ statement_term:
   |MATCH t_match = statement_term WITH
    CASE NIL ARROW t_nil = statement_term
    CASE CONS id_x = IDENT id_xs = IDENT ARROW t_cons = statement_term
-    { Match(t_match, t_nil, id_x, id_xs, t_cons) }
+    { MatchList(t_match, t_nil, id_x, id_xs, t_cons) }
 ;
 
 pot_term:

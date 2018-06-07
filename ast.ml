@@ -41,7 +41,7 @@ and term =
   |Fun of self * string list * term * term * fun_pot_desc option
   |App of term * term list
   |If of term * term * term
-  |Match of term * term * string * string * term
+  |MatchList of term * term * string * string * term
   |Let of string * term * term
   |Letrec of string * term * term
   |Pair of term * term * term

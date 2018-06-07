@@ -93,8 +93,8 @@ let rec process_t env t =
       end
       |S.App(t1, t_l) -> T.App(process_t env t1, List.map (process_t env) t_l)
       |S.If(t1, t2, t3) -> T.If(process_t env t1, process_t env t2, process_t env t3)
-      |S.Match(t_match, t_nil, x, xs, t_cons) ->
-        T.Match(process_t env t_match, process_t env t_nil, x, xs, process_t env t_cons)
+      |S.MatchList(t_match, t_nil, x, xs, t_cons) ->
+        T.MatchList(process_t env t_match, process_t env t_nil, x, xs, process_t env t_cons)
       |S.Let(x, t1, t2) ->
         let t1' = process_t env t1 in
         let mty1 = T.get_type t1' in

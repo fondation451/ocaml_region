@@ -64,7 +64,7 @@ and term =
   |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
   |App of typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
-  |Match of typed_term * typed_term * string * string * typed_term
+  |MatchList of typed_term * typed_term * string * string * typed_term
   |Let of string * typed_term * typed_term
   |Letrec of string * typed_term * typed_term
   |Pair of typed_term * typed_term * typed_term

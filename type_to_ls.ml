@@ -23,8 +23,8 @@ let rec lift_t t =
     |S.Fun(f, x_l, t1, t2, pot) -> T.Fun(f, x_l, lift_t t1, lift_t t2, pot)
     |S.App(t1, t2_l) -> T.App(lift_t t1, List.map lift_t t2_l)
     |S.If(t1, t2, t3) -> T.If(lift_t t1, lift_t t2, lift_t t3)
-    |S.Match(t_match, t_nil, x, xs, t_cons) ->
-      T.Match(lift_t t_match, lift_t t_nil, x, xs, lift_t t_cons)
+    |S.MatchList(t_match, t_nil, x, xs, t_cons) ->
+      T.MatchList(lift_t t_match, lift_t t_nil, x, xs, lift_t t_cons)
     |S.Let(x, t1, t2) -> T.Let(x, lift_t t1, lift_t t2)
     |S.Letrec(f, t1, t2) -> T.Letrec(f, lift_t t1, lift_t t2)
     |S.Pair(t1, t2, t3) -> T.Pair(lift_t t1, lift_t t2, lift_t t3)
@@ -145,20 +145,20 @@ let rec process_ls env_f env t =
     |T.If(t1, t2, t3) ->
       let t3' = process_ls env_f env t3 in
       T.If(process_ls env_f env t1, process_ls env_f env t2, t3'), T.get_type t3'
-    |T.Match(t_match, t_nil, x, xs, t_cons) -> begin
+    |T.MatchList(t_match, t_nil, x, xs, t_cons) -> begin
       let t_match' = process_ls env_f env t_match in
       let (T.TList(ls, mty_x, r)) = T.get_type t_match' in
       match ls with
       |Some(i) when i = 0 ->
         let t_nil' = process_ls env_f env t_nil in
-        T.Match(t_match', t_nil', x, xs, t_cons), T.get_type t_nil'
+        T.MatchList(t_match', t_nil', x, xs, t_cons), T.get_type t_nil'
       |_ ->
         let env =
           StrMap.add x mty_x
             (StrMap.add xs (T.TList(shrink_ls ls, mty_x, r)) env)
         in
         let t_cons' = process_ls env_f env t_cons in
-        T.Match(t_match', t_nil, x, xs, t_cons'), T.get_type t_cons'
+        T.MatchList(t_match', t_nil, x, xs, t_cons'), T.get_type t_cons'
     end
     |T.Let(x, t1, t2) ->
       let t1' = process_ls env_f env t1 in

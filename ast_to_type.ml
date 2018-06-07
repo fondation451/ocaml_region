@@ -306,7 +306,7 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let s4 = mgu (apply_m s2 mty2) (apply_m s3 mty3) in
     let s = compose_subs s4 (compose_subs s3 (compose_subs s2 (compose_subs s1' s1))) in
     s, T.mk_term (T.If(t1', t2', t3')) (generalize env (apply_m s mty2))
-  |S.Match(t_match, t_nil, x, xs, t_cons) ->
+  |S.MatchList(t_match, t_nil, x, xs, t_cons) ->
     let s1, t_match' = type_infer env t_match in
     let mty_match = mty_of (T.get_type t_match') in
     let a1 = T.TAlpha(mk_var ()) in
@@ -327,7 +327,7 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let s = compose_subs s4 (compose_subs s3 s) in
     let s5 = mgu (apply_m s mty_nil) (apply_m s mty_cons) in
     let s = compose_subs s5 s in
-    s, T.mk_term (T.Match(t_match', t_nil', x, xs, t_cons')) (generalize env (apply_m s mty_cons))
+    s, T.mk_term (T.MatchList(t_match', t_nil', x, xs, t_cons')) (generalize env (apply_m s mty_cons))
   |S.Let(x, t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
@@ -491,8 +491,8 @@ let rec subs_term s t =
       |T.Fun(f, arg_l, t1, t2, pot) -> T.Fun(f, arg_l, subs_term s t1, subs_term s t2, pot)
       |T.App(t1, t_l) -> T.App(subs_term s t1, List.map (subs_term s) t_l)
       |T.If(t1, t2, t3) -> T.If(subs_term s t1, subs_term s t2, subs_term s t3)
-      |T.Match(t_match, t_nil, x, xs, t_cons) ->
-        T.Match(subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)
+      |T.MatchList(t_match, t_nil, x, xs, t_cons) ->
+        T.MatchList(subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)
       |T.Let(x, t1, t2) -> T.Let(x, subs_term s t1, subs_term s t2)
       |T.Letrec(f, t1, t2) -> T.Letrec(f, subs_term s t1, subs_term s t2)
       |T.Pair(t1, t2, t3) -> T.Pair(subs_term s t1, subs_term s t2, subs_term s t3)

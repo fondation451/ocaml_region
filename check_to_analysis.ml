@@ -63,7 +63,7 @@ let rec apply_subs_t s sv t =
      |S.Fun(name, arg_l, t1, t2, pot) -> S.Fun(name, arg_l, apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_pot s pot)
      |S.App(t1, t_l) -> S.App(apply_subs_t s sv t1, List.map (apply_subs_t s sv) t_l)
      |S.If(t1, t2, t3) -> S.If(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3)
-     |S.Match(t1, t2, x, xs, t3) -> S.Match(apply_subs_t s sv t1, apply_subs_t s sv t2, x, xs, apply_subs_t s sv t3)
+     |S.MatchList(t1, t2, x, xs, t3) -> S.MatchList(apply_subs_t s sv t1, apply_subs_t s sv t2, x, xs, apply_subs_t s sv t3)
      |S.Let(x, t1, t2) -> S.Let(x, apply_subs_t s (StrMap.remove x sv) t1, apply_subs_t s sv t2)
      |S.Letrec(x, t1, t2) -> S.Letrec(x, apply_subs_t s (StrMap.remove x sv) t1, apply_subs_t s sv t2)
      |S.Pair(t1, t2, t3) -> S.Pair(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3)
@@ -108,7 +108,7 @@ let fv_term t =
     |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
       loop t1 (loop t2 (loop t3 out))
     |S.App(t1, t_l) -> List.fold_left (fun out t2 -> loop t2 out) (loop t1 out) t_l
-    |S.Match(t1, t2, x, xs, t3) ->
+    |S.MatchList(t1, t2, x, xs, t3) ->
       loop t1 (loop t2 (StrSet.remove x (StrSet.remove xs (loop t3 out))))
     |S.Let(x, t1, t2) |S.Letrec(x, t1, t2) ->
       loop t1 (StrSet.remove x (loop t2 out))
@@ -130,7 +130,7 @@ let rec concrete_rgn t =
   |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
   |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
     StrSet.union (concrete_rgn t1) (concrete_rgn t2)
-  |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
+  |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) ->
     StrSet.union (concrete_rgn t1) (StrSet.union (concrete_rgn t2) (concrete_rgn t3))
   |S.App(t1, t_l) ->
     List.fold_left (fun out t2 -> StrSet.union (concrete_rgn t2) out) (concrete_rgn t1) t_l
@@ -154,7 +154,7 @@ let rec rgn_of t =
       |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
       |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
         StrSet.union (rgn_of t1) (rgn_of t2)
-      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.Match(t1, t2, _, _, t3) ->
+      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) ->
         StrSet.union (rgn_of t1) (StrSet.union (rgn_of t2) (rgn_of t3))
       |S.App(t1, t_l) ->
         List.fold_left (fun out t2 -> StrSet.union (rgn_of t2) out) (rgn_of t1) t_l
@@ -560,7 +560,7 @@ let process_r r_l cr_l t =
           let new_line2 = H.PAdd(m, H.PMin m3) in
           new_line1::new_line2::lines, m)
         r_cost3
-    |S.Match(t_match, t_nil, x, xs, t_cons) -> assert false
+    |S.MatchList(t_match, t_nil, x, xs, t_cons) -> assert false
     |S.Let(x, t1, t2) -> process_t t2 (process_t t1 r_cost env_f) env_f
     |S.Letrec(x, t1, t2) ->
       let (S.Fun(f, arg_l, t_fun, _, pot)) = S.get_term t1 in
