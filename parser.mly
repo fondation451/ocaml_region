@@ -17,6 +17,7 @@
 %token SIZE COLON
 %token LT GT LE GE NOT_EQUAL
 %token RPAIR RCONS RREF RHND LENGTH
+%token LEAF NODE
 %token EOF
 %token <int> INTEGER
 %token <string> IDENT
@@ -57,7 +58,10 @@ atomic_term:
   |TRUE { Bool(true) }
   |FALSE { Bool(false) }
   |NIL { Nil }
+  |LEAF { Leaf }
   |CONS t1 = atomic_term t2 = atomic_term AT t_rgn = atomic_term { Cons(t1, t2, t_rgn) }
+  |NODE t1 = atomic_term t2 = atomic_term t3 = atomic_term AT t_rgn = atomic_term
+    { Node(t1, t2, t3, t_rgn) }
   |DEREF t = atomic_term { Deref(t) }
 ;
 
@@ -105,6 +109,10 @@ statement_term:
    CASE NIL ARROW t_nil = statement_term
    CASE CONS id_x = IDENT id_xs = IDENT ARROW t_cons = statement_term
     { MatchList(t_match, t_nil, id_x, id_xs, t_cons) }
+  |MATCH t_match = statement_term WITH
+   CASE LEAF ARROW t_leaf = statement_term
+   CASE NODE id_x = IDENT id_l = IDENT id_r = IDENT ARROW t_node = statement_term
+    { MatchTree(t_match, t_leaf, id_x, id_l, id_r, t_node) }
 ;
 
 pot_term:

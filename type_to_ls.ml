@@ -25,6 +25,8 @@ let rec lift_t t =
     |S.If(t1, t2, t3) -> T.If(lift_t t1, lift_t t2, lift_t t3)
     |S.MatchList(t_match, t_nil, x, xs, t_cons) ->
       T.MatchList(lift_t t_match, lift_t t_nil, x, xs, lift_t t_cons)
+    |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) ->
+      T.MatchTree(lift_t t_match, lift_t t_leaf, x, tl, tr, lift_t t_node)
     |S.Let(x, t1, t2) -> T.Let(x, lift_t t1, lift_t t2)
     |S.Letrec(f, t1, t2) -> T.Letrec(f, lift_t t1, lift_t t2)
     |S.Pair(t1, t2, t3) -> T.Pair(lift_t t1, lift_t t2, lift_t t3)
@@ -33,7 +35,9 @@ let rec lift_t t =
     |S.Hd(t1) -> T.Hd(lift_t t1)
     |S.Tl(t1) -> T.Tl(lift_t t1)
     |S.Nil -> T.Nil
+    |S.Leaf -> T.Leaf
     |S.Cons(t1, t2, t3) -> T.Cons(lift_t t1, lift_t t2, lift_t t3)
+    |S.Node(t1, t2, t3, t4) -> T.Node(lift_t t1, lift_t t2, lift_t t3, lift_t t4)
     |S.Ref(t1, t2) -> T.Ref(lift_t t1, lift_t t2)
     |S.Assign(t1, t2) -> T.Assign(lift_t t1, lift_t t2)
     |S.Deref(t1) -> T.Deref(lift_t t1)
@@ -56,13 +60,26 @@ let shrink_ls ls =
   |None -> None
   |Some(i) -> Some(i-1)
 
-let rec list_returned mty =
+let add_ls ls ls' =
+  match ls, ls' with
+  |Some(i), Some(i') -> Some(i+i')
+  |Some(i), _ -> Some(i)
+  |_ -> ls'
+
+let max_ls ls ls' =
+  match ls, ls' with
+  |Some(i), Some(i') -> Some(max i i')
+  |Some(i), _ -> Some(i)
+  |_ -> ls'
+
+let rec sized_type_returned mty =
   match mty with
   |T.TFun(mty_l, mty2, _) ->
-    (List.exists list_returned mty_l) || list_returned mty2
-  |T.TCouple(mty1, mty2, _) -> (list_returned mty1) || (list_returned mty2)
-  |T.TRef(_, mty1, _) -> list_returned mty1
+    (List.exists sized_type_returned mty_l) || sized_type_returned mty2
+  |T.TCouple(mty1, mty2, _) -> (sized_type_returned mty1) || (sized_type_returned mty2)
+  |T.TRef(_, mty1, _) -> sized_type_returned mty1
   |T.TList(_, _, _) -> true
+  |T.TTree(_, _, _, _) -> true
   |_ -> false
 
 let rec merge_mty mty_out mty_ls =
@@ -73,6 +90,8 @@ let rec merge_mty mty_out mty_ls =
     T.TCouple(merge_mty mty1 mty1', merge_mty mty2 mty2', r)
   |T.TList(_, mty1, r), T.TList(ls, mty1', _) ->
     T.TList(ls, merge_mty mty1 mty1', r)
+  |T.TTree(_, _, mty1, r), T.TTree(lsn, lsd, mty1', _) ->
+    T.TTree(lsn, lsd, merge_mty mty1 mty1', r)
   |T.TRef(_, mty1, r), T.TRef(id, mty1', _) ->
     T.TRef(id, merge_mty mty1 mty1', r)
   |_ -> mty_out
@@ -120,7 +139,7 @@ let rec process_ls env_f env t =
       let t2_l' =
         List.fold_right (fun t2 t2_l' -> (process_ls env_f env t2)::t2_l') t2_l []
       in
-      if list_returned (T.get_type t1') then
+      if sized_type_returned (T.get_type t1') then
         let (arg_l, t_fun) =
           match T.get_term t1' with
           |T.Var(v) -> StrMap.find v env_f
@@ -159,6 +178,27 @@ let rec process_ls env_f env t =
         in
         let t_cons' = process_ls env_f env t_cons in
         T.MatchList(t_match', t_nil, x, xs, t_cons'), T.get_type t_cons'
+    end
+    |T.MatchTree(t_match, t_leaf, x, tl, tr, t_node) -> begin
+      let t_match' = process_ls env_f env t_match in
+      let (T.TTree(lsn, lsd, mty_x, r)) = T.get_type t_match' in
+      match lsn with
+      |Some(i) when i = 0 ->
+        let t_leaf' = process_ls env_f env t_leaf in
+        T.MatchTree(t_match', t_leaf', x, tl, tr, t_node), T.get_type t_leaf'
+      |_ ->
+        let env =
+          StrMap.add x mty_x
+            (StrMap.add
+              tl
+              (T.TTree(shrink_ls lsn, shrink_ls lsd, mty_x, r))
+              (StrMap.add
+                tr
+                (T.TTree(shrink_ls lsn, shrink_ls lsd, mty_x, r))
+                env))
+        in
+        let t_node' = process_ls env_f env t_node in
+        T.MatchTree(t_match', t_leaf, x, tl, tr, t_node'), T.get_type t_node'
     end
     |T.Let(x, t1, t2) ->
       let t1' = process_ls env_f env t1 in
@@ -199,6 +239,9 @@ let rec process_ls env_f env t =
     |T.Nil ->
       let (T.TList(_, mty1, r)) = mty in
       T.Nil, T.TList(Some(0), mty1, r)
+    |T.Leaf ->
+      let (T.TTree(_, _, mty1, r)) = mty in
+      T.Leaf, T.TTree(Some(0), Some(0), mty1, r)
     |T.Cons(t1, t2, t3) ->
       let t1' = process_ls env_f env t1 in
       let t2' = process_ls env_f env t2 in
@@ -207,6 +250,16 @@ let rec process_ls env_f env t =
       let (T.TList(ls, _, _)) = T.get_type t2' in
       let r = rgn_of t3' in
       T.Cons(t1', t2', t3'), T.TList(grow_ls ls, mty1, r)
+    |T.Node(t1, t2, t3, t4) ->
+      let t1' = process_ls env_f env t1 in
+      let t2' = process_ls env_f env t2 in
+      let t3' = process_ls env_f env t3 in
+      let t4' = process_ls env_f env t4 in
+      let mty1 = T.get_type t1' in
+      let (T.TTree(ls1, ls2, _, _)) = T.get_type t2' in
+      let (T.TTree(ls1', ls2', _, _)) = T.get_type t3' in
+      let r = rgn_of t4' in
+      T.Node(t1', t2', t3', t4'), T.TTree(grow_ls (add_ls ls1 ls1'), grow_ls (max_ls ls2 ls2'), mty1, r)
     |T.Ref(t1, t2) ->
       let t1' = process_ls env_f env t1 in
       let t2' = process_ls env_f env t2 in

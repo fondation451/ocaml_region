@@ -34,6 +34,7 @@ let strmap_diff m1 m2 = StrMap.filter (fun k v -> StrMap.mem k m2) m1
 type ressource =
   |RPAIR
   |RCONS
+  |RNODE
   |RNIL
   |RREF
   |RHND
@@ -44,6 +45,7 @@ let cost_of ress =
   match ress with
   |RPAIR -> 2
   |RCONS -> 2
+  |RNODE -> 2
   |RNIL -> 0
   |RREF -> 1
   |RHND -> 1

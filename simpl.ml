@@ -10,6 +10,7 @@ type rcaml_type =
   |TFun of rcaml_type list * rcaml_type * regions
   |TCouple of rcaml_type * rcaml_type * regions
   |TList of list_sized * rcaml_type * regions
+  |TTree of  list_sized * list_sized * rcaml_type * regions
   |TRef of int * rcaml_type * regions
   |THnd of regions
 
@@ -60,6 +61,7 @@ and term =
   |App of typed_term * typed_term list
   |If of typed_term * typed_term * typed_term
   |MatchList of typed_term * typed_term * string * string * typed_term
+  |MatchTree of typed_term * typed_term * string * string * string * typed_term
   |Let of string * typed_term * typed_term
   |Letrec of string * typed_term * typed_term
   |Pair of typed_term * typed_term * typed_term
@@ -69,6 +71,8 @@ and term =
   |Tl of typed_term
   |Nil
   |Cons of typed_term * typed_term * typed_term
+  |Leaf
+  |Node of typed_term * typed_term * typed_term * typed_term
   |Ref of typed_term * typed_term
   |Assign of typed_term * typed_term
   |Deref of typed_term

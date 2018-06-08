@@ -21,6 +21,7 @@ let rec lift_type mty =
     )
   |S.TCouple(mty1, mty2, r) -> T.TCouple(lift_type mty1, lift_type mty2, r)
   |S.TList(i, mty1, r) -> T.TList(i, lift_type mty1, r)
+  |S.TTree(lsn, lsd, mty1, r) -> T.TTree(lsn, lsd, lift_type mty1, r)
   |S.TRef(id, mty1, r) -> T.TRef(id, lift_type mty1, r)
   |S.THnd(r) -> T.THnd(r)
 
@@ -32,7 +33,7 @@ let fv_mty mty =
     |T.TFun(_, mty_l, mty1, r, cin, cout, phie) ->
       List.fold_left (fun out mty -> loop mty out) (loop mty1 out) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 out)
-    |T.TList(_, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 out
+    |T.TList(_, mty1, r) |T.TTree(_, _, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 out
   in loop mty StrSet.empty
 
 let fr_mty mty =
@@ -43,7 +44,7 @@ let fr_mty mty =
     |T.TFun(_, mty_l, mty1, r, cin, cout, phie) ->
       List.fold_left (fun out mty -> loop mty out) (loop mty1 (StrSet.add r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (StrSet.add r out))
-    |T.TList(_, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 (StrSet.add r out)
+    |T.TList(_, mty1, r) |T.TTree(_, _, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 (StrSet.add r out)
   in loop mty StrSet.empty
 
 let unrestricted c g = T.cap_forall (fun (r, cap) -> not (T.gamma_mem r g) || (cap = T.Relaxed)) c
@@ -59,14 +60,14 @@ let sub_cap c1 c2 =
 let rec rgn_of t =
   let merge_rgn _ _ _ = Some(T.Relaxed) in
   match S.get_term t with
-  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrMap.empty
+  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil |S.Leaf -> StrMap.empty
   |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1)
   |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
     rgn_of t1
   |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
   |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
     StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
-  |S.If(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) ->
+  |S.If(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) |S.MatchTree(t1, t2, _, _, _, t3) ->
     StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
   |S.App(t1, t_l) ->
     List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
@@ -87,6 +88,19 @@ let rec rgn_of t =
         (match S.get_type t3 with
          |S.THnd(r) -> StrMap.singleton r T.Relaxed
          |_ -> assert false))
+  |S.Node(t1, t2, t3, t4) ->
+    StrMap.union
+      merge_rgn
+      (rgn_of t1)
+      (StrMap.union
+          merge_rgn
+          (rgn_of t2)
+          (StrMap.union
+            merge_rgn
+            (rgn_of t3)
+            (match S.get_type t4 with
+              |S.THnd(r) -> StrMap.singleton r T.Relaxed
+              |_ -> assert false)))
 (* **** *)
 
 let generalize_cap c c_ref =
@@ -128,6 +142,7 @@ let rec replace_rgn s mty =
       )
   |T.TCouple(mty1, mty2, r) -> T.TCouple(replace_rgn s mty1, replace_rgn s mty2, replace s r)
   |T.TList(i, mty1, r) -> T.TList(i, replace_rgn s mty1, replace s r)
+  |T.TTree(lsn, lsd, mty1, r) -> T.TTree(lsn, lsd, replace_rgn s mty1, replace s r)
   |T.TRef(id, mty1, r) -> T.TRef(id, replace_rgn s mty1, replace s r)
 
 let rec instance_of_rgn r mty1 mty2 =
@@ -153,7 +168,9 @@ let rec instance_of_rgn r mty1 mty2 =
       Some(r2)
     else
       merge_some (instance_of_rgn r mty1 mty1') (instance_of_rgn r mty2 mty2')
-  |T.TList(_, mty1, r1), T.TList(_, mty1', r2) |T.TRef(_, mty1, r1), T.TRef(_, mty1', r2) ->
+  |T.TList(_, mty1, r1), T.TList(_, mty1', r2)
+  |T.TTree(_, _, mty1, r1), T.TTree(_, _, mty1', r2)
+  |T.TRef(_, mty1, r1), T.TRef(_, mty1', r2) ->
     if r = r1 then
       Some(r2)
     else
@@ -222,6 +239,7 @@ let rec rgn_subs mty1 mty2 out =
     rgn_subs mty1 mty1' (rgn_subs mty2 mty2' (StrMap.add r' r
      out))
   |S.TList(_, mty1, r), T.TList(_, mty1', r')
+  |S.TTree(_, _, mty1, r), T.TTree(_, _, mty1', r')
   |S.TRef(_, mty1, r), T.TRef(_, mty1', r') ->
     rgn_subs mty1 mty1' (StrMap.add r' r out)
   |S.THnd(r), T.THnd(r') -> StrMap.add r' r out
@@ -256,6 +274,8 @@ let rec merge_mty mty_out mty_checked =
     T.TCouple(merge_mty mty1 mty1', merge_mty mty2 mty2', r)
   |S.TList(ls, mty1, r), T.TList(_, mty1', _) ->
     T.TList(ls, merge_mty mty1 mty1', r)
+  |S.TTree(lsn, lsd, mty1, r), T.TTree(_, _, mty1', _) ->
+    T.TTree(lsn, lsd, merge_mty mty1 mty1', r)
   |S.TRef(id, mty1, r), T.TRef(_, mty1', _) ->
     T.TRef(id, merge_mty mty1 mty1', r)
   |S.THnd(r), T.THnd(r') -> T.THnd(r)
@@ -394,6 +414,13 @@ let rec check_term env g c t =
       T.MatchList(t_match', t_nil', x, xs, t_cons'), lift_type mty,
       g3, c3,
       T.merge_effects phi1 (T.merge_effects phi2 phi3)
+    |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node), _ ->
+      let t_match', g1, c1, phi1 = check_term env g c t_match in
+      let t_leaf', g2, c2, phi2 = check_term env g1 c1 t_leaf in
+      let t_node', g3, c3, phi3 = check_term env g1 c1 t_node in
+      T.MatchTree(t_match', t_leaf', x, tl, tr, t_node'), lift_type mty,
+      g3, c3,
+      T.merge_effects phi1 (T.merge_effects phi2 phi3)
     |S.Let(x, t1, t2), _ ->
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term (StrMap.add x (T.get_type t1') env) g1 c1 t2 in
@@ -424,6 +451,7 @@ let rec check_term env g c t =
       let t1', g1, c1, phi1 = check_term env g c t1 in
       T.Tl(t1'), lift_type mty, g1, c1, phi1
     |S.Nil, S.TList(_, _, r) -> T.Nil, lift_type mty, g, c, T.empty_effects
+    |S.Leaf, S.TTree(_, _, _, _) -> T.Leaf, lift_type mty, g, c, T.empty_effects
     |S.Cons(t1, t2, t3), S.TList(_, _, r) ->
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
@@ -431,6 +459,14 @@ let rec check_term env g c t =
       let c4, phi4 = check_rgn r c3 in
       let phi = T.merge_effects phi4 (T.merge_effects phi1 (T.merge_effects phi2 phi3)) in
       T.Cons(t1', t2', t3'), lift_type mty, g3, c4, phi
+    |S.Node(t1, t2, t3, t4), S.TTree(_, _, _, r) ->
+      let t1', g1, c1, phi1 = check_term env g c t1 in
+      let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
+      let t3', g3, c3, phi3 = check_term env g2 c2 t3 in
+      let t4', g4, c4, phi4 = check_term env g3 c3 t4 in
+      let c5, phi5 = check_rgn r c4 in
+      let phi = T.merge_effects phi5 (T.merge_effects phi4 (T.merge_effects phi1 (T.merge_effects phi2 phi3))) in
+      T.Node(t1', t2', t3', t4'), lift_type mty, g4, c5, phi
     |S.Ref(t1, t2), _ ->
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in

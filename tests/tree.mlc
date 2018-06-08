@@ -1,0 +1,20 @@
+let rgn0 = newrgn () in
+
+aliasrgn rgn0 in
+
+let t =
+  Node 1
+    (Node 9
+      (Node 5 Leaf Leaf @ rgn0)
+      Leaf
+    @ rgn0)
+    (Node 6
+      (Node 4
+        (Node 7 Leaf Leaf @ rgn0)
+        Leaf
+      @ rgn0)
+      (Node 3 Leaf Leaf @ rgn0)
+    @ rgn0)
+  @ rgn0
+in
+()

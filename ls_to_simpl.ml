@@ -19,6 +19,7 @@ let rec convert_mty mty =
   |S.TCouple(mty1, mty2, r) ->
     T.TCouple(convert_mty mty1, convert_mty mty2, simpl_r r)
   |S.TList(ls, mty1, r) -> T.TList(simpl_ls ls, convert_mty mty1, simpl_r r)
+  |S.TTree(lsn, lsd, mty1, r) -> T.TTree(simpl_ls lsn, simpl_ls lsd, convert_mty mty1, simpl_r r)
   |S.TRef(id, mty1, r) -> T.TRef(id, convert_mty mty1, simpl_r r)
   |S.THnd(r) -> T.THnd(simpl_r r)
 
@@ -95,6 +96,8 @@ let rec process_t env t =
       |S.If(t1, t2, t3) -> T.If(process_t env t1, process_t env t2, process_t env t3)
       |S.MatchList(t_match, t_nil, x, xs, t_cons) ->
         T.MatchList(process_t env t_match, process_t env t_nil, x, xs, process_t env t_cons)
+      |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) ->
+        T.MatchTree(process_t env t_match, process_t env t_leaf, x, tl, tr, process_t env t_node)
       |S.Let(x, t1, t2) ->
         let t1' = process_t env t1 in
         let mty1 = T.get_type t1' in
@@ -109,7 +112,9 @@ let rec process_t env t =
       |S.Hd(t1) -> T.Hd(process_t env t1)
       |S.Tl(t1) -> T.Tl(process_t env t1)
       |S.Nil -> T.Nil
+      |S.Leaf -> T.Leaf
       |S.Cons(t1, t2, t3) -> T.Cons(process_t env t1, process_t env t2, process_t env t3)
+      |S.Node(t1, t2, t3, t4) -> T.Node(process_t env t1, process_t env t2, process_t env t3, process_t env t4)
       |S.Ref(t1, t2) -> T.Ref(process_t env t1, process_t env t2)
       |S.Assign(t1, t2) -> T.Assign(process_t env t1, process_t env t2)
       |S.Deref(t1) -> T.Deref(process_t env t1)

@@ -17,6 +17,7 @@ let fv_mty mty =
     |T.TFun(mty_l, mty2, _) -> List.fold_left (fun out mty -> loop mty out) (loop mty2 out) mty_l
     |T.TCouple(mty1, mty2, _) -> loop mty1 (loop mty2 out)
     |T.TList(_, mty1, _) -> loop mty1 out
+    |T.TTree(_, _, mty1, _) -> loop mty1 out
     |T.TRef(_, mty1, _) -> loop mty1 out
   in loop mty StrSet.empty
 
@@ -42,7 +43,7 @@ let fr_mty mty =
     |T.TFun(mty_l, mty2, r) ->
       List.fold_left (fun out mty -> loop mty out) (loop mty2 (fr_r r out)) mty_l
     |T.TCouple(mty1, mty2, r) -> loop mty1 (loop mty2 (fr_r r out))
-    |T.TList(_, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 (fr_r r out)
+    |T.TList(_, mty1, r) |T.TTree(_, _, mty1, r) |T.TRef(_, mty1, r) -> loop mty1 (fr_r r out)
   in loop mty StrSet.empty
 
 let fr_ty (T.TPoly(_, rgn_l, mty)) = StrSet.diff (fr_mty mty) (StrSet.of_list rgn_l)
@@ -64,6 +65,7 @@ let rec apply_m s mty =
     T.TFun(List.map (fun mty -> apply_m s mty) mty_l, apply_m s mty2, apply_r sr r)
   |T.TCouple(mty1, mty2, r) -> T.TCouple(apply_m s mty1, apply_m s mty2, apply_r sr r)
   |T.TList(ls, mty1, r) -> T.TList(ls, apply_m s mty1, apply_r sr r)
+  |T.TTree(lsn, lsd, mty1, r) -> T.TTree(lsn, lsd, apply_m s mty1, apply_r sr r)
   |T.TRef(id, mty1, r) -> T.TRef(id, apply_m s mty1, apply_r sr r)
 
 let remove_subs alpha_l rgn_l s =
@@ -160,7 +162,9 @@ let rec mgu mty1 mty2 =
     let s2 = mgu (apply_m s1 mty2) (apply_m s1 mty2') in
     let s3 = rgnbind r r' in
     compose_subs s3 (compose_subs s1 s2)
-  |T.TList(_, mty1, r), T.TList(_, mty1', r') |T.TRef(_, mty1, r), T.TRef(_, mty1', r') ->
+  |T.TList(_, mty1, r), T.TList(_, mty1', r')
+  |T.TTree(_, _, mty1, r), T.TTree(_, _, mty1', r')
+  |T.TRef(_, mty1, r), T.TRef(_, mty1', r') ->
     let s1 = mgu mty1 mty1' in
     let s2 = rgnbind r r' in
     compose_subs s1 s2
@@ -328,6 +332,34 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let s5 = mgu (apply_m s mty_nil) (apply_m s mty_cons) in
     let s = compose_subs s5 s in
     s, T.mk_term (T.MatchList(t_match', t_nil', x, xs, t_cons')) (generalize env (apply_m s mty_cons))
+  |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) ->
+    let s1, t_match' = type_infer env t_match in
+    let mty_match = mty_of (T.get_type t_match') in
+    let a1 = T.TAlpha(mk_var ()) in
+    let s2 = mgu (apply_m s1 mty_match) (T.TTree(None, None, a1, T.RAlpha(mk_rgn ()))) in
+    let s = compose_subs s1 s2 in
+    let env = apply_env s env in
+    let s3, t_leaf' = type_infer env t_leaf in
+    let env = apply_env s3 env in
+    let env' =
+      StrMap.add
+        x
+        (T.TPoly([], [], apply_m s a1))
+        (StrMap.add
+          tl
+          (T.TPoly([], [], T.TTree(None, None, apply_m s a1, T.RAlpha(mk_rgn ()))))
+          (StrMap.add
+            tr
+            (T.TPoly([], [], T.TTree(None, None, apply_m s a1, T.RAlpha(mk_rgn ()))))
+            env))
+    in
+    let s4, t_node' = type_infer env' t_node in
+    let mty_leaf = mty_of (T.get_type t_leaf') in
+    let mty_node = mty_of (T.get_type t_node') in
+    let s = compose_subs s4 (compose_subs s3 s) in
+    let s5 = mgu (apply_m s mty_leaf) (apply_m s mty_node) in
+    let s = compose_subs s5 s in
+    s, T.mk_term (T.MatchTree(t_match', t_leaf', x, tl, tr, t_node')) (generalize env (apply_m s mty_node))
   |S.Let(x, t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = mty_of (T.get_type t1') in
@@ -397,6 +429,7 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     subs_empty, T.mk_term T.Nil (generalize env (T.TList(None,
                                                          T.TAlpha(mk_var ()),
                                                          T.RAlpha(mk_rgn ()))))
+  |S.Leaf -> subs_empty, T.mk_term T.Leaf (generalize env (T.TTree(None, None, T.TAlpha(mk_var ()), T.RAlpha(mk_rgn ()))))
   |S.Cons(t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -413,6 +446,25 @@ Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_t
     let s = compose_subs s5 (compose_subs s4 s) in
     s, T.mk_term (T.Cons(t1', t2', t3'))
                  (generalize env (apply_m s (T.TList(None, apply_m s mty1, r))))
+  |S.Node(t1, t2, t3, t4) ->
+    let s1, t1' = type_infer env t1 in
+    let env = apply_env s1 env in
+    let s2, t2' = type_infer env t2 in
+    let env  = apply_env s2 env in
+    let s3, t3' = type_infer env t3 in
+    let env  = apply_env s3 env in
+    let s4, t4' = type_infer env t4 in
+    let mty1 = mty_of (T.get_type t1') in
+    let mty2 = mty_of (T.get_type t2') in
+    let mty3 = mty_of (T.get_type t3') in
+    let mty4 = mty_of (T.get_type t4') in
+    let r = T.RAlpha(mk_rgn ()) in
+    let s = compose_subs s4 (compose_subs s3 (compose_subs s2 s1)) in
+    let s5 = mgu (apply_m s mty2) (T.TTree(None, None, apply_m s mty1, T.RAlpha(mk_rgn ()))) in
+    let s6 = mgu (apply_m s mty3) (T.TTree(None, None, apply_m s mty1, T.RAlpha(mk_rgn ()))) in
+    let s7 = mgu (apply_m s mty4) (T.THnd(r)) in
+    let s = compose_subs s7 (compose_subs s6 (compose_subs s5 s)) in
+    s, T.mk_term (T.Node(t1', t2', t3', t4')) (generalize env (apply_m s (T.TTree(None, None, apply_m s mty1, r))))
   |S.Ref(t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -493,6 +545,8 @@ let rec subs_term s t =
       |T.If(t1, t2, t3) -> T.If(subs_term s t1, subs_term s t2, subs_term s t3)
       |T.MatchList(t_match, t_nil, x, xs, t_cons) ->
         T.MatchList(subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)
+      |T.MatchTree(t_match, t_leaf, x, tl, ts, t_node) ->
+        T.MatchTree(subs_term s t_match, subs_term s t_leaf, x, tl, ts, subs_term s t_node)
       |T.Let(x, t1, t2) -> T.Let(x, subs_term s t1, subs_term s t2)
       |T.Letrec(f, t1, t2) -> T.Letrec(f, subs_term s t1, subs_term s t2)
       |T.Pair(t1, t2, t3) -> T.Pair(subs_term s t1, subs_term s t2, subs_term s t3)
@@ -501,7 +555,9 @@ let rec subs_term s t =
       |T.Hd(t1) -> T.Hd(subs_term s t1)
       |T.Tl(t1) -> T.Tl(subs_term s t1)
       |T.Nil -> T.Nil
+      |T.Leaf -> T.Leaf
       |T.Cons(t1, t2, t3) -> T.Cons(subs_term s t1, subs_term s t2, subs_term s t3)
+      |T.Node(t1, t2, t3, t4) -> T.Node(subs_term s t1, subs_term s t2, subs_term s t3, subs_term s t4)
       |T.Ref(t1, t2) -> T.Ref(subs_term s t1, subs_term s t2)
       |T.Assign(t1, t2) -> T.Assign(subs_term s t1, subs_term s t2)
       |T.Deref(t1) -> T.Deref(subs_term s t1)

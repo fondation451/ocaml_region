@@ -40,6 +40,8 @@
       "rref", RREF;
       "rhnd", RHND;
       "_length", LENGTH;
+      "Leaf", LEAF;
+      "Node", NODE;
     ] in
     h
 

@@ -17,7 +17,9 @@ let rec merge_mty mty_src mty_dest out =
           mty_src_l mty_dest_l))
   |S.TCouple(mty_src', mty_src'', r1), S.TCouple(mty_dest', mty_dest'', r2) ->
     StrMap.add r1 r2 (merge_mty mty_src' mty_dest' (merge_mty mty_src'' mty_dest'' out))
-  |S.TList(_, mty_src', r1), S.TList(_, mty_dest', r2) |S.TRef(_, mty_src', r1), S.TRef(_, mty_dest', r2) ->
+  |S.TList(_, mty_src', r1), S.TList(_, mty_dest', r2)
+  |S.TTree(_, _, mty_src', r1), S.TTree(_, _, mty_dest', r2)
+  |S.TRef(_, mty_src', r1), S.TRef(_, mty_dest', r2) ->
     StrMap.add r1 r2 (merge_mty mty_src' mty_dest' out)
   |S.THnd(r1), S.THnd(r2) -> StrMap.add r1 r2 out
   |_ -> StrMap.empty
@@ -40,6 +42,7 @@ let rec apply_subs_mty s mty =
            List.map (apply_subs_effect s) phi)
   |S.TCouple(mty1, mty2, r) -> S.TCouple(apply_subs_mty s mty1, apply_subs_mty s mty2, apply_subs_r s r)
   |S.TList(ls, mty1, r) -> S.TList(ls, apply_subs_mty s mty1, apply_subs_r s r)
+  |S.TTree(lsn, lsd, mty1, r) -> S.TTree(lsn, lsd, apply_subs_mty s mty1, apply_subs_r s r)
   |S.TRef(id, mty1, r) -> S.TRef(id, apply_subs_mty s mty1, apply_subs_r s r)
   |S.THnd(r) -> S.THnd(apply_subs_r s r)
   |_ -> mty
@@ -64,6 +67,8 @@ let rec apply_subs_t s sv t =
      |S.App(t1, t_l) -> S.App(apply_subs_t s sv t1, List.map (apply_subs_t s sv) t_l)
      |S.If(t1, t2, t3) -> S.If(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3)
      |S.MatchList(t1, t2, x, xs, t3) -> S.MatchList(apply_subs_t s sv t1, apply_subs_t s sv t2, x, xs, apply_subs_t s sv t3)
+     |S.MatchTree(t1, t2, x, tl, tr, t3) ->
+       S.MatchTree(apply_subs_t s sv t1, apply_subs_t s sv t2, x, tl, tr, apply_subs_t s sv t3)
      |S.Let(x, t1, t2) -> S.Let(x, apply_subs_t s (StrMap.remove x sv) t1, apply_subs_t s sv t2)
      |S.Letrec(x, t1, t2) -> S.Letrec(x, apply_subs_t s (StrMap.remove x sv) t1, apply_subs_t s sv t2)
      |S.Pair(t1, t2, t3) -> S.Pair(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3)
@@ -72,6 +77,7 @@ let rec apply_subs_t s sv t =
      |S.Hd(t1) -> S.Hd(apply_subs_t s sv t1)
      |S.Tl(t1) -> S.Tl(apply_subs_t s sv t1)
      |S.Cons(t1, t2, t3) -> S.Cons(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3)
+     |S.Node(t1, t2, t3, t4) -> S.Node(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3, apply_subs_t s sv t4)
      |S.Ref(t1, t2) -> S.Ref(apply_subs_t s sv t1, apply_subs_t s sv t2)
      |S.Assign(t1, t2) -> S.Assign(apply_subs_t s sv t1, apply_subs_t s sv t2)
      |S.Deref(t1) -> S.Deref(apply_subs_t s sv t1)
@@ -98,7 +104,7 @@ let subs s sv t =  apply_subs s sv t (apply_subs_t s sv t)
 let fv_term t =
   let rec loop t out =
     match S.get_term t with
-    |S.Unit |S.Bool(_) |S.Int(_) |S.Newrgn |S.Nil -> out
+    |S.Unit |S.Bool(_) |S.Int(_) |S.Newrgn |S.Nil |S.Leaf -> out
     |S.Var(v) ->StrSet.add v out
     |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
       loop t1 out
@@ -107,9 +113,12 @@ let fv_term t =
       loop t1 (loop t2 out)
     |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) ->
       loop t1 (loop t2 (loop t3 out))
+    |S.Node(t1, t2, t3, t4) -> loop t1 (loop t2 (loop t3 (loop t4 out)))
     |S.App(t1, t_l) -> List.fold_left (fun out t2 -> loop t2 out) (loop t1 out) t_l
     |S.MatchList(t1, t2, x, xs, t3) ->
       loop t1 (loop t2 (StrSet.remove x (StrSet.remove xs (loop t3 out))))
+    |S.MatchTree(t1, t2, x, tl, tr, t3) ->
+      loop t1 (loop t2 (StrSet.remove x (StrSet.remove tl (StrSet.remove tr (loop t3 out)))))
     |S.Let(x, t1, t2) |S.Letrec(x, t1, t2) ->
       loop t1 (StrSet.remove x (loop t2 out))
   in
@@ -124,21 +133,27 @@ let rec concrete_rgn t =
     |S.THnd(r) -> StrSet.singleton r
     |_ -> assert false
   end
-  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrSet.empty
+  |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil |S.Leaf -> StrSet.empty
   |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
     concrete_rgn t1
   |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
   |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
     StrSet.union (concrete_rgn t1) (concrete_rgn t2)
-  |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) ->
+  |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) |S.MatchTree(t1, t2, _, _, _, t3) ->
     StrSet.union (concrete_rgn t1) (StrSet.union (concrete_rgn t2) (concrete_rgn t3))
+  |S.Node(t1, t2, t3, t4) ->
+    StrSet.union
+      (concrete_rgn t1)
+      (StrSet.union
+        (concrete_rgn t2)
+        (StrSet.union (concrete_rgn t3) (concrete_rgn t4)))
   |S.App(t1, t_l) ->
     List.fold_left (fun out t2 -> StrSet.union (concrete_rgn t2) out) (concrete_rgn t1) t_l
 
 let rec rgn_mty mty =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> StrSet.empty
-  |S.TList(_, mty1, r) |S.TRef(_, mty1, r) -> StrSet.add r (rgn_mty mty1)
+  |S.TList(_, mty1, r) |S.TTree(_, _, mty1, r) |S.TRef(_, mty1, r) -> StrSet.add r (rgn_mty mty1)
   |S.TCouple(mty1, mty2, r) -> StrSet.add r (StrSet.union (rgn_mty mty1) (rgn_mty mty2))
   |S.TFun(_, mty_l, mty2, r, _, _, _) ->
     List.fold_left (fun out mty1 -> StrSet.union (rgn_mty mty1) out) (StrSet.add r (rgn_mty mty2)) mty_l
@@ -148,14 +163,16 @@ let rec rgn_of t =
   StrSet.union
     (
       match S.get_term t with
-      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil -> StrSet.empty
+      |S.Unit |S.Bool(_) |S.Int(_) |S.Var(_) |S.Newrgn |S.Nil |S.Leaf -> StrSet.empty
       |S.Not(t1) |S.Neg(t1) |S.Fst(t1) |S.Snd(t1) |S.Hd(t1) |S.Tl(t1) |S.Deref(t1) |S.Freergn(t1) ->
         rgn_of t1
       |S.Binop(_, t1, t2) |S.Comp(_, t1, t2) |S.Fun(_, _, t1, t2, _) |S.Let(_, t1, t2)
       |S.Letrec(_, t1, t2) |S.Ref(t1, t2) |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
         StrSet.union (rgn_of t1) (rgn_of t2)
-      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) ->
+      |S.If(t1, t2, t3) |S.Pair(t1, t2, t3) |S.Cons(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) |S.MatchTree(t1, t2, _, _, _, t3) ->
         StrSet.union (rgn_of t1) (StrSet.union (rgn_of t2) (rgn_of t3))
+      |S.Node(t1, t2, t3, t4) ->
+        StrSet.union (rgn_of t1) (StrSet.union (rgn_of t2) (StrSet.union (rgn_of t3) (rgn_of t4)))
       |S.App(t1, t_l) ->
         List.fold_left (fun out t2 -> StrSet.union (rgn_of t2) out) (rgn_of t1) t_l
     )
@@ -165,7 +182,7 @@ let on_rgn r mty =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> false
   |S.TFun(_, _, _, r', _, _, _) |S.TCouple(_, _, r') |S.TList(_, _, r')
-  |S.TRef(_, _, r') |S.THnd(r') -> r = r'
+  |S.TTree(_, _, _, r') |S.TRef(_, _, r') |S.THnd(r') -> r = r'
 
 (*let fun_name t =
   match S.get_term t with
@@ -250,7 +267,7 @@ let get_rgn mty =
   match mty with
   |S.TInt |S.TBool |S.TUnit |S.TAlpha(_) -> assert false
   |S.TFun(_, _, _, r, _, _, _) |S.TCouple(_, _, r)
-  |S.TList(_, _, r) |S.TRef(_, _, r) |S.THnd(r) -> r
+  |S.TList(_, _, r) |S.TTree(_, _, _, r) |S.TRef(_, _, r) |S.THnd(r) -> r
 
 let get_len mty =
   match mty with
@@ -407,7 +424,7 @@ let process_r r_l cr_l t =
     let te = S.get_term t in
     let mty = S.get_type t in
     match te with
-    |S.Unit |S.Bool(_) |S.Int(_) |S.Nil |S.Var(_) ->
+    |S.Unit |S.Bool(_) |S.Int(_) |S.Nil |S.Leaf |S.Var(_) ->
       StrMap.map
         (fun (lines, n) ->
           let m = H.PPot(H.mk_pot vars) in
@@ -561,6 +578,7 @@ let process_r r_l cr_l t =
           new_line1::new_line2::lines, m)
         r_cost3
     |S.MatchList(t_match, t_nil, x, xs, t_cons) -> assert false
+    |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) -> assert false
     |S.Let(x, t1, t2) -> process_t t2 (process_t t1 r_cost env_f) env_f
     |S.Letrec(x, t1, t2) ->
       let (S.Fun(f, arg_l, t_fun, _, pot)) = S.get_term t1 in
@@ -588,6 +606,16 @@ let process_r r_l cr_l t =
           else
             lines, n)
         (process_t t2 (process_t t1 r_cost env_f) env_f)
+    |S.Node(t1, t2, t3, t4) ->
+      StrMap.mapi
+        (fun r (lines, n) ->
+          if on_rgn r mty then
+            let m = H.PPot(H.mk_pot' "node" vars) in
+            let new_line = H.PAdd(H.PAdd(m, H.PMin n), H.PLit(cost_of RNODE)) in
+            new_line::lines, m
+          else
+            lines, n)
+        (process_t t3 (process_t t2 (process_t t1 r_cost env_f) env_f) env_f)
     |S.Ref(t1, t2) -> process_t t2 (process_t t1 r_cost env_f) env_f
     |S.Assign(t1, t2) -> process_t t2 (process_t t1 r_cost env_f) env_f
     |S.Deref(t1) -> process_t t1 r_cost env_f

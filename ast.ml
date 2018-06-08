@@ -42,6 +42,7 @@ and term =
   |App of term * term list
   |If of term * term * term
   |MatchList of term * term * string * string * term
+  |MatchTree of term * term * string * string * string * term
   |Let of string * term * term
   |Letrec of string * term * term
   |Pair of term * term * term
@@ -51,6 +52,8 @@ and term =
   |Tl of term
   |Nil
   |Cons of term * term * term
+  |Leaf
+  |Node of term * term * term * term
   |Ref of term * term
   |Assign of term * term
   |Deref of term
