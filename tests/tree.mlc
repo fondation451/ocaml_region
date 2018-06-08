@@ -1,6 +1,19 @@
 let rgn0 = newrgn () in
+let rgn1 = newrgn () in
 
 aliasrgn rgn0 in
+aliasrgn rgn1 in
+
+let rec elem_of t out =
+  { rgn1: _node(t) * rcons -> 0 }
+  match t with
+  |Leaf -> out
+  |Node x l r -> (
+    let tmp = elem_of r (Cons x out @ rgn1) in
+    elem_of l tmp)
+@
+  rgn0
+in
 
 let t =
   Node 1
@@ -17,4 +30,5 @@ let t =
     @ rgn0)
   @ rgn0
 in
+let l = elem_of t Nil in
 ()

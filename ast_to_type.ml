@@ -211,11 +211,11 @@ let get_rgn mty =
 (***********)
 
 let rec type_infer env t =
-  (* Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term t); *)
+(*   Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term t); *)
   match t with
   |S.Var(var) -> begin
     try
-Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_type_poly);
+(*Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env T.show_rcaml_type_poly);*)
       subs_empty, T.mk_term (T.Var(var)) (generalize env (instanciate (StrMap.find var env)))
     with Not_found -> raise (T.Error "Type_infer")
   end

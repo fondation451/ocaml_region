@@ -17,7 +17,7 @@
 %token SIZE COLON
 %token LT GT LE GE NOT_EQUAL
 %token RPAIR RCONS RREF RHND LENGTH
-%token LEAF NODE
+%token LEAF NODE NODEP DEPTH
 %token EOF
 %token <int> INTEGER
 %token <string> IDENT
@@ -122,6 +122,8 @@ pot_term:
   |RHND { PLit(Util.cost_of Util.RHND) }
   |SIZE LPAR v = IDENT RPAR { PSize(v) }
   |LENGTH LPAR v = IDENT RPAR { PLen(v) }
+  |NODEP LPAR v = IDENT RPAR { PNode(v) }
+  |DEPTH LPAR v = IDENT RPAR { PDepth(v) }
   |i = INTEGER { PLit(i) }
   |p1 = pot_term PLUS p2 = pot_term { PAdd(p1, p2) }
   |p1 = pot_term TIMES p2 = pot_term { PMul(p1, p2) }

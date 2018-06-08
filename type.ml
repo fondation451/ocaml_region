@@ -45,6 +45,8 @@ and pot = Ast.pot =
   |PLit of int
   |PSize of string
   |PLen of string
+  |PNode of string
+  |PDepth of string
   |PAdd of pot * pot
   |PMin of pot
   |PMul of pot * pot

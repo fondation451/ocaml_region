@@ -42,6 +42,8 @@
       "_length", LENGTH;
       "Leaf", LEAF;
       "Node", NODE;
+      "_node", NODEP;
+      "_depth", DEPTH;
     ] in
     h
 

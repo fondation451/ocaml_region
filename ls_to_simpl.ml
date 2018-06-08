@@ -34,6 +34,8 @@ let rec convert_p p arg_l =
   |S.PLit(i) -> T.PLit(i)
   |S.PSize(s) -> T.PSize(List.assoc s arg_l)
   |S.PLen(s) -> T.PLen(List.assoc s arg_l)
+  |S.PNode(s) -> T.PNode(List.assoc s arg_l)
+  |S.PDepth(s) -> T.PDepth(List.assoc s arg_l)
   |S.PAdd(p1, p2) -> T.PAdd(convert_p p1 arg_l, convert_p p2 arg_l)
   |S.PMin(p1) -> T.PMin(convert_p p1 arg_l)
   |S.PMul(p1, p2) -> T.PMul(convert_p p1 arg_l, convert_p p2 arg_l)

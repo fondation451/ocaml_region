@@ -210,6 +210,8 @@ let convert_line pot =
     |H.PMul(_) -> assert false
     |H.PSize(_) -> assert false
     |H.PLen(_) -> assert false
+    |H.PNode(_) -> assert false
+    |H.PDepth(_) -> assert false
   in
   let bound, out = loop pot 1 0 [] in
   -1 * bound, out
@@ -274,21 +276,31 @@ let get_len mty =
   |S.TList(i, _, _) -> i
   |_ -> assert false
 
+let get_node mty =
+  match mty with
+  |S.TTree(lsn, _, _, _) -> lsn
+  |_ -> assert false
+
+let get_depth mty =
+  match mty with
+  |S.TTree(_, lsd, _, _) -> lsd
+  |_ -> assert false
+
 let rec instanciate_size i t_l out =
   match t_l with
   |[] -> (*H.PUnit, out*) assert false
   |hd::tl when i = 0 -> let r = get_rgn (S.get_type hd) in H.PPot(r), r::out
   |hd::tl -> instanciate_size (i-1) tl out
 
-let rec instanciate_length i t_l out =
+let rec instanciate_fun f i t_l out =
   match t_l with
   |[] -> assert false
   |hd::tl when i = 0 -> begin
-    match get_len (S.get_type hd) with
+    match f (S.get_type hd) with
     |Some(i) -> H.PLit(i), out
     |None -> let r = get_rgn (S.get_type hd) in H.PPot(r), r::out
   end
-  |hd::tl -> instanciate_length (i-1) tl out
+  |hd::tl -> instanciate_fun f (i-1) tl out
 
 let rec simplify_lit p =
   let rec loop p =
@@ -329,7 +341,9 @@ let rec instanciate p t_l =
     match p with
     |H.PPot(_) |H.PLit(_) -> p, out
     |H.PSize(i) -> instanciate_size i t_l out
-    |H.PLen(i) -> instanciate_length i t_l out
+    |H.PLen(i) -> instanciate_fun get_len i t_l out
+    |H.PNode(i) -> instanciate_fun get_node i t_l out
+    |H.PDepth(i) -> instanciate_fun get_depth i t_l out
     |H.PAdd(p1, p2) ->
       let p1', out = loop p1 t_l out in
       let p2', out = loop p2 t_l out in
