@@ -5,6 +5,7 @@ aliasrgn rgn0 in
 aliasrgn rgn1 in
 
 let rec elem_of t out =
+  { rgn1: _node(t) * rcons -> 0 }
   match t with
   |Leaf -> out
   |Node x l r -> (
