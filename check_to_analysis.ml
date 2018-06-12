@@ -66,7 +66,17 @@ let rec apply_subs_t s sv t =
      |S.Fun(name, arg_l, t1, t2, pot) -> S.Fun(name, arg_l, apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_pot s pot)
      |S.App(t1, t_l) -> S.App(apply_subs_t s sv t1, List.map (apply_subs_t s sv) t_l)
      |S.If(t1, t2, t3) -> S.If(apply_subs_t s sv t1, apply_subs_t s sv t2, apply_subs_t s sv t3)
-     |S.MatchList(t1, t2, x, xs, t3) -> S.MatchList(apply_subs_t s sv t1, apply_subs_t s sv t2, x, xs, apply_subs_t s sv t3)
+     |S.MatchList(t1, t2, x, xs, t3) ->
+       let t1' = apply_subs_t s sv t1 in
+       let (S.TList(ls, mty_x, r)) = S.get_type t1' in
+       let sv' =
+         StrMap.add
+           x mty_x
+           (StrMap.add
+             xs (S.TList((match ls with |Some(i) -> Some(i-1) |_ -> None), mty_x, r))
+             sv)
+       in
+       S.MatchList(t1', apply_subs_t s sv t2, x, xs, apply_subs_t s sv' t3)
      |S.MatchTree(t1, t2, x, tl, tr, t3) ->
        S.MatchTree(apply_subs_t s sv t1, apply_subs_t s sv t2, x, tl, tr, apply_subs_t s sv t3)
      |S.Let(x, t1, t2) -> S.Let(x, apply_subs_t s (StrMap.remove x sv) t1, apply_subs_t s sv t2)
@@ -409,21 +419,6 @@ let link_lines r lines lin_progs =
   in
   List.fold_left (fun out line -> link_line line out) lines lines
 
-let env = Hashtbl.create 10
-let add_fun_pot r f v = Hashtbl.add env (r, f) v
-let mem_fun_pot r f = Hashtbl.mem env (r, f)
-let find_fun_pot r f = Hashtbl.find env (r, f)
-let remove_fun_pot r f = Hashtbl.remove env (r, f)
-
-let print_fun_pot () =
-  Hashtbl.iter
-    (fun (r, f) (pc, pd, lines) ->
-      Printf.printf
-        "%s::%s : (%s, %s)\n%s\n\n"
-        f r (H.show_pot pc) (H.show_pot pd)
-        (List.fold_left (fun out p -> out ^ ";\n" ^ (H.show_pot p)) "" lines))
-    env
-
 let process_r r_l cr_l t =
   let vars = ref (StrSet.empty) in
   let saved_state = ref [] in
@@ -434,7 +429,7 @@ let process_r r_l cr_l t =
   Printf.printf "OUT\n";
   StrMap.iter (fun r (lines, n) -> Printf.printf "%s : %s\n%s\n" r n (H.show_integer_prog lines)) out;
   Printf.printf "\n\n";*)
-(*   Printf.printf "--------- ANALISYS PROCESS ------------\n%s\n\n" (S.show_typed_term t); *)
+   Printf.printf "--------- ANALISYS PROCESS ------------\n%s\n\n" (S.show_typed_term t);
     let te = S.get_term t in
     let mty = S.get_type t in
     match te with
@@ -466,37 +461,6 @@ let process_r r_l cr_l t =
           else
             lines, n)
         r_cost
-(*      in
-      match pot with
-      |Some(fun_pot_l) ->
-        List.iter (fun (r, (pc, pd)) -> add_fun_pot r f (pc, pd, [])) fun_pot_l;
-        r_cost
-      |None ->
-        let l_n = List.map (fun (r, (lines, n)) -> r, n) (StrMap.bindings r_cost) in
-        let l_c = List.map (fun (r, n) -> r, H.PPot(H.mk_pot' "c" vars)) l_n in
-        let l_d = List.map (fun (r, n) -> r, H.PPot(H.mk_pot' "d" vars)) l_n in
-        List.iter2 (fun (r, c) (r, d) -> add_fun_pot r f (c, d, [])) l_c l_d;
-        let r_cost_f =
-          StrMap.mapi
-            (fun r (lines, d') ->
-              let c = List.assoc r l_c in
-              let d = List.assoc r l_d in
-              if c <> d' then
-                let new_line_fun = H.PAdd(d, H.PMin d') in
-                new_line_fun::lines, d
-              else
-                [], c)
-            (process_t t1 (StrMap.mapi (fun r (lines, n) -> [], List.assoc r l_c) r_cost) env_f)
-        in
-        StrMap.iter
-          (fun r (lines, d) ->
-            if lines <> [] then
-              add_fun_pot r f (List.assoc r l_c, d, lines)
-            else
-              remove_fun_pot r f)
-          r_cost_f;
-        r_cost
-    end*)
     |S.App((*s, *)t1, t_l) -> begin
       let r_cost = process_t t1 r_cost env_f in
       let (arg_l, fun_mty_l, t_fun, pot) =
@@ -548,20 +512,6 @@ let process_r r_l cr_l t =
             in
             List.rev_append new_lines lines, n'')
           r_cost
-(*
-        List.fold_left
-          (fun (r, (cr, dr)) ->
-            let cr, r_cr = instanciate cr t_l in
-            let dr, r_dr = instanciate dr t_l in
-            let r_fun_lines =
-              List.fold_left
-                (fun out r ->
-                  let l, _ = StrMap.find r r_cost in
-                  List.rev_append l out)
-                [] (List.rev_append r_dr r_cr)
-            in
-            (cr, dr, r_fun_lines))
-          [] fun_pot_l*)
       |None ->
         let mty_l = List.map S.get_type t_l in
         let s = List.fold_left2 (fun out fun_mty mty -> merge_mty fun_mty mty out) StrMap.empty fun_mty_l mty_l in
@@ -591,7 +541,17 @@ let process_r r_l cr_l t =
           let new_line2 = H.PAdd(m, H.PMin m3) in
           new_line1::new_line2::lines, m)
         r_cost3
-    |S.MatchList(t_match, t_nil, x, xs, t_cons) -> assert false
+    |S.MatchList(t_match, t_nil, x, xs, t_cons) -> begin
+      let (S.TList(ls, mty_x, r)) = S.get_type t_match in
+      match ls with
+      |None -> assert false
+      |Some(size) ->
+        let r_cost = process_t t_match r_cost env_f in
+        if size = 0 then
+          process_t t_nil r_cost env_f
+        else
+          process_t t_cons r_cost env_f
+    end
     |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) -> assert false
     |S.Let(x, t1, t2) -> process_t t2 (process_t t1 r_cost env_f) env_f
     |S.Letrec(x, t1, t2) ->

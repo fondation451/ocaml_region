@@ -5,6 +5,9 @@ let rgn3 = newrgn () in
 let rgn4 = newrgn () in
 
 let rec duplicate xs r r1 r2 =
+  { r : (_length(xs) + 1) * rpair -> 0 ;
+    r1: _length(xs) * rcons -> 0 ;
+    r2: _length(xs) * rcons -> 0 }
   match xs with
   |Nil -> (Nil, Nil) @ r
   |Cons h t -> begin

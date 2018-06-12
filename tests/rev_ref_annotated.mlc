@@ -15,6 +15,7 @@ aliasrgn rgn0 in
 let rec rev l r =
   let out = ref Nil @ r in
   let rec loop l =
+    { r: _length(l) * rcons -> 0 }
     match l with
     |Nil -> ()
     |Cons x xs -> begin

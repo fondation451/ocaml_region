@@ -11,6 +11,7 @@ let rgn1 = newrgn () in
 let rgn2 = newrgn () in
 
 let rec rev l out r =
+  { r: _length(l) * rcons -> 0 }
   match l with
   |Nil -> out
   |Cons x xs -> rev xs (Cons x out @ r) r

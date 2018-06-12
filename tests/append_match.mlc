@@ -13,7 +13,6 @@ begin
   aliasrgn rgn1 in
 
   let rec append l1 l2 rgn =
-    { rgn: _length(l1) * rcons -> 0; rgn1: 0 -> 0 }
     match l1 with
     |Nil -> l2
     |Cons x xs -> Cons x (append xs l2 rgn) @ rgn

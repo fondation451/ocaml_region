@@ -2,7 +2,7 @@
   Nicolas ASSOUAD
 
   Test function for memory consumption analysis
-  Append
+  Append with match
 
 *)
 
@@ -13,11 +13,10 @@ begin
   aliasrgn rgn1 in
 
   let rec append l1 l2 rgn =
-    { rgn: size(l1) -> 0; rgn1: 0 -> 0 }
-    if l1 = Nil @ rgn0 then
-      l2
-    else
-      Cons (hd l1) (append (tl l1) l2 rgn) @ rgn
+    { rgn: _length(l1) * rcons -> 0; rgn1: 0 -> 0 }
+    match l1 with
+    |Nil -> l2
+    |Cons x xs -> Cons x (append xs l2 rgn) @ rgn
   @
     rgn1
   in
@@ -25,6 +24,6 @@ begin
   let l1 = [0 ; 1 ; 2 ; 3] @ rgn0 in
   let l2 = [4 ; 5 ; 6] @ rgn1 in
 
-  append l1 l2 rgn1;
-  freergn rgn0
+  let tmp = append l1 l2 rgn1 in
+  ()
 end
