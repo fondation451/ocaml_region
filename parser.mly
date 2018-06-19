@@ -7,6 +7,8 @@
 
   let loc() = symbol_start_pos(), symbol_end_pos()
 
+  let mk te = Ast.mk_term te Ast.TUnit [] []
+
 %}
 
 
@@ -40,7 +42,7 @@
 %nonassoc ELSE
 
 %start entry
-%type <Ast.term> entry
+%type <Ast.typed_term> entry
 
 
 %%
@@ -52,67 +54,67 @@ entry:
 atomic_term:
   |BEGIN t = sequence_term END { t }
   |LPAR t = sequence_term RPAR { t }
-  |i = INTEGER { Int(i) }
-  |id = IDENT { Var(id) }
-  |UNIT { Unit }
-  |TRUE { Bool(true) }
-  |FALSE { Bool(false) }
-  |NIL { Nil }
-  |LEAF { Leaf }
-  |CONS t1 = atomic_term t2 = atomic_term AT t_rgn = atomic_term { Cons(t1, t2, t_rgn) }
+  |i = INTEGER { mk (Int i) }
+  |id = IDENT { mk (Var id) }
+  |UNIT { mk Unit }
+  |TRUE { mk (Bool true) }
+  |FALSE { mk (Bool false) }
+  |NIL { mk Nil }
+  |LEAF { mk Leaf }
+  |CONS t1 = atomic_term t2 = atomic_term AT t_rgn = atomic_term { mk (Cons (t1, t2, t_rgn)) }
   |NODE t1 = atomic_term t2 = atomic_term t3 = atomic_term AT t_rgn = atomic_term
-    { Node(t1, t2, t3, t_rgn) }
-  |DEREF t = atomic_term { Deref(t) }
+    { mk (Node (t1, t2, t3, t_rgn)) }
+  |DEREF t = atomic_term { mk (Deref t) }
 ;
 
 application_term:
   |t = atomic_term { t }
   |t1 = application_term t2 = application_term
     {
-      match t2 with
-      |App(t21, t2_l) -> App(t1, t21::t2_l)
-      |_ -> App(t1, [t2])
+      match Ast.get_term t2 with
+      |App(t21, t2_l) -> mk (App (t1, t21::t2_l))
+      |_ -> mk (App (t1, [t2]))
     }
-  |t_left = application_term AFFECT t_right = application_term { Assign(t_left, t_right) }
-  |REF t = application_term AT t_rgn = application_term { Ref(t, t_rgn) }
-  |FST t = application_term { Fst(t) }
-  |SND t = application_term { Snd(t) }
-  |HD t = application_term { Hd(t) }
-  |TL t = application_term { Tl(t) }
-  |NEWRGN UNIT { Newrgn }
-  |ALIASRGN t_rgn = application_term IN t = any_term { Aliasrgn(t_rgn, t) }
-  |FREERGN t_rgn = application_term { Freergn(t_rgn) }
-  |LPAR t1 = application_term COMA t2 = application_term RPAR AT t_rgn = application_term { Pair(t1, t2, t_rgn) }
+  |t_left = application_term AFFECT t_right = application_term { mk (Assign (t_left, t_right)) }
+  |REF t = application_term AT t_rgn = application_term { mk (Ref (t, t_rgn)) }
+  |FST t = application_term { mk (Fst t) }
+  |SND t = application_term { mk (Snd t) }
+  |HD t = application_term { mk (Hd t) }
+  |TL t = application_term { mk (Tl t) }
+  |NEWRGN UNIT { mk Newrgn }
+  |ALIASRGN t_rgn = application_term IN t = any_term { mk (Aliasrgn (t_rgn, t)) }
+  |FREERGN t_rgn = application_term { mk (Freergn t_rgn) }
+  |LPAR t1 = application_term COMA t2 = application_term RPAR AT t_rgn = application_term { mk (Pair (t1, t2, t_rgn)) }
   |LSBRA elem_l = separated_list(SEMICOLON, application_term) RSBRA AT t_rgn = application_term
     {
       let rec loop elem_l =
         match elem_l with
-        |[] -> Nil
-        |hd::tl -> Cons(hd, loop tl, t_rgn)
+        |[] -> mk Nil
+        |hd::tl -> mk (Cons (hd, loop tl, t_rgn))
       in loop elem_l
     }
 ;
 
 %inline op_term:
   |t = application_term { t }
-  |t1 = application_term operator = binop t2 = application_term { Binop(operator, t1, t2) }
-  |t1 = application_term comp_operator = comp_op t2 = application_term { Comp(comp_operator, t1, t2) }
-  |MINUS t = application_term %prec uminus { Neg(t) }
-  |NOT t = application_term { Not(t) }
+  |t1 = application_term operator = binop t2 = application_term { mk (Binop (operator, t1, t2)) }
+  |t1 = application_term comp_operator = comp_op t2 = application_term { mk (Comp(comp_operator, t1, t2)) }
+  |MINUS t = application_term %prec uminus { mk (Neg t) }
+  |NOT t = application_term { mk (Not t) }
 ;
 
 statement_term:
   |t = op_term { t }
   |IF t_cond = statement_term THEN t_then = statement_term ELSE t_else = statement_term %prec struct_prec
-    { If(t_cond, t_then, t_else) }
+    { mk (If (t_cond, t_then, t_else)) }
   |MATCH t_match = statement_term WITH
    CASE NIL ARROW t_nil = statement_term
    CASE CONS id_x = IDENT id_xs = IDENT ARROW t_cons = statement_term
-    { MatchList(t_match, t_nil, id_x, id_xs, t_cons) }
+    { mk (MatchList (t_match, t_nil, id_x, id_xs, t_cons)) }
   |MATCH t_match = statement_term WITH
    CASE LEAF ARROW t_leaf = statement_term
    CASE NODE id_x = IDENT id_l = IDENT id_r = IDENT ARROW t_node = statement_term
-    { MatchTree(t_match, t_leaf, id_x, id_l, id_r, t_node) }
+    { mk (MatchTree (t_match, t_leaf, id_x, id_l, id_r, t_node)) }
 ;
 
 pot_term:
@@ -137,22 +139,22 @@ rgn_pot_term:
 
 any_term:
   |t = statement_term { t }
-  |FUN id_l = nonempty_list(IDENT) ARROW t_body = any_term AT t_rgn = any_term { Fun("", id_l, t_body, t_rgn, None) }
-  |LET id = IDENT EQUAL t1 = any_term IN t2 = any_term { Let(id, t1, t2) }
+  |FUN id_l = nonempty_list(IDENT) ARROW t_body = any_term AT t_rgn = any_term { mk (Fun ("", id_l, t_body, t_rgn, None)) }
+  |LET id = IDENT EQUAL t1 = any_term IN t2 = any_term { mk (Let (id, t1, t2)) }
   |LET REC id_f = IDENT id_l = nonempty_list(IDENT) EQUAL t1 = any_term AT t_rgn = any_term IN t2 = any_term
-    { Letrec(id_f, Fun(id_f, id_l, t1, t_rgn, None), t2) }
+    { mk (Letrec (id_f, mk (Fun (id_f, id_l, t1, t_rgn, None)), t2)) }
   |LET REC id_f = IDENT id_l = nonempty_list(IDENT) EQUAL
     LBRA pot = separated_list(SEMICOLON, rgn_pot_term) RBRA
     t1 = any_term AT t_rgn = any_term IN t2 = any_term
     {
       let pot = match pot with |[] -> None |_ -> Some(pot) in
-      Letrec(id_f, Fun(id_f, id_l, t1, t_rgn, pot), t2)
+      mk (Letrec (id_f, mk (Fun (id_f, id_l, t1, t_rgn, pot)), t2))
     }
 ;
 
 sequence_term:
   |t = any_term { t }
-  |t1 = sequence_term SEMICOLON t2 = sequence_term { Sequence(t1, t2) }
+  |t1 = sequence_term SEMICOLON t2 = sequence_term { mk (Sequence (t1, t2)) }
 ;
 
 %inline binop:

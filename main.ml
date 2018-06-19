@@ -39,13 +39,13 @@ let () =
   try
 
     let prog = Parser.entry Lexer.token buf in
-    Printf.printf "(********** RCAML **********)\n%s\n\n" (Ast.show_term prog);
+    Printf.printf "(********** RCAML **********)\n%s\n\n" (Ast.show_typed_term prog);
 
     let prog = Ast_to_type.process prog in
-    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Type.show_typed_term prog);
+    Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Ast.show_typed_term prog);
 
     let prog = Type_to_ls.process prog in
-    Printf.printf "(********** RCAML LS **********)\n%s\n\n" (Ls.show_typed_term prog);
+    Printf.printf "(********** RCAML LS **********)\n%s\n\n" (Ast.show_typed_term prog);
 
     let prog = Ls_to_simpl.process prog in
     Printf.printf "(********** RCAML SIMPL **********)\n%s\n\n" (Simpl.show_typed_term prog);
@@ -68,10 +68,10 @@ let () =
     report_loc (lexeme_start_p buf, lexeme_end_p buf);
     eprintf "Syntax error\n@.";
     exit 1
-  |Type.Error(str) ->
+  |Ast.Type_Error(str) ->
     eprintf "Typing error : %s\n@." str;
     exit 1
-  |Ls.Error(str) ->
+  |Ast.Ls_Error(str) ->
     eprintf "Ls error : %s\n@." str;
     exit 1
   |Simpl.Error(str) ->

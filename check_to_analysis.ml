@@ -213,6 +213,58 @@ let on_rgn r mty =
   |_ -> assert false
 *)
 
+(* convertion to linear program *)
+
+(* already used in two lines, should not be used in three *)
+let other_use id lines =
+  let rec loop lines occ =
+    if occ > 2 then
+      false
+    else
+      match lines with
+      | [] -> true
+      | h::t ->
+        let rec in_line line =
+          match line with
+          | H.PPot id' -> id = id'
+          | H.PAdd(p1, p2) | H.PMul(p1, p2) -> in_line p1 || in_line p2
+          | H.PMin p1 -> in_line p1
+          | _ -> false
+        in
+        if in_line h then
+          loop t (occ+1)
+        else
+          loop t occ
+  in loop lines 0
+
+let merge_line line1 line2 lines =
+  match line1, line2 with
+  | H.PAdd(H.PPot id1, H.PMin(H.PPot id2)), H.PAdd(H.PPot id3, H.PMin(H.PPot id4)) ->
+    if id2 = id3 && other_use id2 lines && other_use id3 lines then
+      Some(H.PAdd(H.PPot id1, H.PMin(H.PPot id4)))
+    else
+      None
+  | H.PAdd(H.PPot id1, H.PMin(H.PPot id2)), H.PAdd(H.PPot id3, H.PMin(H.PPot id4)) ->
+    if id1 = id4 && other_use id1 lines && other_use id4 lines then
+      Some(H.PAdd(H.PPot id3, H.PMin(H.PPot id2)))
+    else
+      None
+  | _ -> None
+
+let merge_lines lines =
+  let rec loop l out =
+    match l with
+    | [] -> out
+    | [h] -> h::out
+    | line1::line2::t -> begin
+      match merge_line line1 line2 lines with
+      | Some(line') ->
+        loop (line'::t) out
+      | None ->
+        loop (line2::t) (line1::out)
+    end
+  in List.rev (loop lines [])
+
 let from_coef c =
   match c with
   |Num.Int(out) -> out
@@ -253,7 +305,9 @@ let convert_to_simplex m vars lin_prog =
       let bound, line = convert_line pot in
       loop_line (Simplex.add_line sim line (Simplex.mk_const bound)) lin_prog'
   in
-  loop_line (loop_var sim vars) lin_prog
+  let tmp = merge_lines lin_prog in
+  Printf.printf "%s :\n%s\n\n" m (H.show_integer_prog tmp);
+  loop_line (loop_var sim vars) (merge_lines lin_prog)
 
 let find_rgn_sub r s =
   let out = List.map fst (List.filter (fun (r1, r2) -> r2 = r) s) in

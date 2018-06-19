@@ -1,6 +1,27 @@
 (* AST for OCaml with regions *)
 
-type binop =
+exception Type_Error of string
+exception Ls_Error of string
+
+type rcaml_type =
+  |TInt
+  |TBool
+  |TUnit
+  |TAlpha of string
+  |TFun of rcaml_type list * rcaml_type * regions
+  |TCouple of rcaml_type * rcaml_type * regions
+  |TList of list_sized * rcaml_type * regions
+  |TTree of  list_sized * list_sized * rcaml_type * regions
+  |TRef of int * rcaml_type * regions
+  |THnd of regions
+
+and regions =
+  |RRgn of string
+  |RAlpha of string
+
+and list_sized = int option
+
+and binop =
   |Op_add
   |Op_sub
   |Op_mul
@@ -36,32 +57,50 @@ and term =
   |Bool of bool
   |Int of int
   |Var of string
-  |Binop of binop * term * term
-  |Not of term
-  |Neg of term
-  |Comp of comp * term * term
-  |Fun of self * string list * term * term * fun_pot_desc option
-  |App of term * term list
-  |If of term * term * term
-  |MatchList of term * term * string * string * term
-  |MatchTree of term * term * string * string * string * term
-  |Let of string * term * term
-  |Letrec of string * term * term
-  |Pair of term * term * term
-  |Fst of term
-  |Snd of term
-  |Hd of term
-  |Tl of term
+  |Binop of binop * typed_term * typed_term
+  |Not of typed_term
+  |Neg of typed_term
+  |Comp of comp * typed_term * typed_term
+  |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
+  |App of typed_term * typed_term list
+  |If of typed_term * typed_term * typed_term
+  |MatchList of typed_term * typed_term * string * string * typed_term
+  |MatchTree of typed_term * typed_term * string * string * string * typed_term
+  |Let of string * typed_term * typed_term
+  |Letrec of string * typed_term * typed_term
+  |Pair of typed_term * typed_term * typed_term
+  |Fst of typed_term
+  |Snd of typed_term
+  |Hd of typed_term
+  |Tl of typed_term
   |Nil
-  |Cons of term * term * term
+  |Cons of typed_term * typed_term * typed_term
   |Leaf
-  |Node of term * term * term * term
-  |Ref of term * term
-  |Assign of term * term
-  |Deref of term
+  |Node of typed_term * typed_term * typed_term * typed_term
+  |Ref of typed_term * typed_term
+  |Assign of typed_term * typed_term
+  |Deref of typed_term
   |Newrgn
-  |Aliasrgn of term * term
-  |Freergn of term
-  |Sequence of term * term
+  |Aliasrgn of typed_term * typed_term
+  |Freergn of typed_term
+  |Sequence of typed_term * typed_term
+
+and typed_term = {
+  rterm : term;
+  rtype : rcaml_type;
+  ralpha_l : string list;
+  rrgn_l : string list;
+}
 
 [@@deriving show { with_path = false }]
+
+let mk_term t mty alpha_l rgn_l = {
+  rterm = t;
+  rtype = mty;
+  ralpha_l = alpha_l;
+  rrgn_l = rgn_l;
+}
+let get_term t = t.rterm
+let get_type t = t.rtype
+let get_alpha_l t = t.ralpha_l
+let get_rgn_l t = t.rrgn_l

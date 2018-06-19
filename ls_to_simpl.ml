@@ -1,6 +1,6 @@
 open Util
 
-module S = Ls
+module S = Ast
 
 module T = Simpl
 
