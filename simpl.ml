@@ -16,9 +16,9 @@ type rcaml_type =
 
 and regions = string
 
-and list_sized = Type.list_sized
+and list_sized = Ast.list_sized
 
-and binop = Type.binop =
+and binop = Ast.binop =
   |Op_add
   |Op_sub
   |Op_mul
@@ -27,12 +27,12 @@ and binop = Type.binop =
   |Op_and
   |Op_or
 
-and comp = Type.comp =
+and comp = Ast.comp =
   |Ceq |Cneq
   |Clt |Cgt
   |Cle |Cge
 
-and self = Type.self
+and self = Ast.self
 
 and pot =
   |PPot of string
