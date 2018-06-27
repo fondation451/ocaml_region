@@ -3,6 +3,18 @@ open Util
 module S = Simpl
 module T = Check
 
+(*let rec unlift_type = function
+  | T.TInt -> S.TInt
+  | T.TBool -> S.TBool
+  | T.TUnit -> S.TUnit
+  | T.TAlpha a -> S.TAlpha a
+  | T.TFun (_, mty_l, mty1, r, _, _, _) -> S.TFun (List.map unlift_type mty_l, unlift_type mty1, r)
+  | T.TCouple (mty1, mty2, r) -> S.TCouple (unlift_type mty1, unlift_type mty2, r)
+  | T.TList (ls, mty1, r) -> S.TList (ls, unlift_type mty1, r)
+  | T.TTree (lsn, lsd, mty1, r) -> S.TTree (lsn, lsd, unlift_type mty1, r)
+  | T.TRef (i, mty1, r) -> S.TRef (i, unlift_type mty1, r)
+  | T.THnd r -> S.THnd r
+*)
 let rec lift_type mty =
   match mty with
   |S.TInt -> T.TInt
@@ -67,10 +79,11 @@ let rec rgn_of t =
   |S.Let(_, t1, t2) |S.Letrec(_, t1, t2) |S.Binop(_, t1, t2) |S.Comp(_, t1, t2)
   |S.Assign(t1, t2) |S.Aliasrgn(t1, t2) |S.Sequence(t1, t2) ->
     StrMap.union merge_rgn (rgn_of t1) (rgn_of t2)
-  |S.If(t1, t2, t3) |S.MatchList(t1, t2, _, _, t3) |S.MatchTree(t1, t2, _, _, _, t3) ->
+  |S.If(t1, t2, t3) ->
     StrMap.union merge_rgn (rgn_of t1) (StrMap.union merge_rgn (rgn_of t2) (rgn_of t3))
-  |S.App(t1, t_l) ->
-    List.fold_left (fun out t2 -> StrMap.union merge_rgn out (rgn_of t2)) (rgn_of t1) t_l
+  |S.MatchList(var_match, t2, _, _, t3) |S.MatchTree(var_match, t2, _, _, _, t3) ->
+    StrMap.union merge_rgn (rgn_of t2) (rgn_of t3)
+  |S.App(t1, arg_l) -> rgn_of t1
   |S.Fun(_, _, t1, t2, _) |S.Ref(t1, t2) ->
     StrMap.union
       merge_rgn
@@ -369,9 +382,10 @@ let rec check_term env g c t =
         T.merge_effects (T.merge_effects (T.effects_of [T.EAlloc(r)]) phi2) phi3
       else
         raise (T.Error (Printf.sprintf "Error with function region behaviour %s" r))
-    |S.App(t1, t_l), _ -> begin
+    |S.App(t1, arg_l), _ -> begin
       let t1', g1, c1, phi1 = check_term env g c t1 in
-      let t_l', g2, c2, phi2 =
+      let t_l' = List.map (fun arg -> T.mk_term (T.Var arg) (StrMap.find arg env) [] []) arg_l in
+(*      let t_l', g2, c2, phi2 =
         let rec loop g c t_l =
           match t_l with
           |[] -> [], g, c, T.empty_effects
@@ -380,7 +394,7 @@ let rec check_term env g c t =
             let t_l_out, g_out, c_out, phi_out = loop g' c' tail in
             head'::t_l_out, g_out, c_out, T.merge_effects phi' phi_out
         in loop g1 c1 t_l
-      in
+      in*)
       (* let r_l', s = inst_mty r_l (T.get_type t1') (List.map T.get_type t_l') in *)
       (* let s' = StrMap.bindings s in *)
       (* let t1_mty'' = replace_rgn s (T.get_type t1') in *)
@@ -392,12 +406,12 @@ let rec check_term env g c t =
         print_cap cin "cin";
         print_cap cout "cout"; *)
   (*      let new_f_ty = inst_ty f_ty (List.map T.get_type t_l') in*)
-        if sub_cap c2 cin then
+        if sub_cap c1 cin then
           T.App(t1', t_l'),
           lift_type mty,
-          g2,
-          T.union_cap (T.diff_cap c2 (T.diff_cap cin cout)) (T.diff_cap cout cin),
-          T.merge_effects phie (T.merge_effects phi1 phi2)
+          g1,
+          T.union_cap (T.diff_cap c1 (T.diff_cap cin cout)) (T.diff_cap cout cin),
+          T.merge_effects phie phi1
         else
           raise (T.Error (Printf.sprintf "Function call : capabilities not sub cap of cin"))
       |_ -> assert false
@@ -407,20 +421,18 @@ let rec check_term env g c t =
       let t2', g2, c2, phi2 = check_term env g1 c1 t2 in
       let t3', g3, c3, phi3 = check_term env g1 c1 t3 in
       T.If(t1', t2', t3'), lift_type mty, g3, c3, T.merge_effects phi1 (T.merge_effects phi2 phi3)
-    |S.MatchList(t_match, t_nil, x, xs, t_cons), _ ->
-      let t_match', g1, c1, phi1 = check_term env g c t_match in
-      let t_nil', g2, c2, phi2 = check_term env g1 c1 t_nil in
-      let t_cons', g3, c3, phi3 = check_term env g1 c1 t_cons in
-      T.MatchList(t_match', t_nil', x, xs, t_cons'), lift_type mty,
-      g3, c3,
-      T.merge_effects phi1 (T.merge_effects phi2 phi3)
-    |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node), _ ->
-      let t_match', g1, c1, phi1 = check_term env g c t_match in
-      let t_leaf', g2, c2, phi2 = check_term env g1 c1 t_leaf in
-      let t_node', g3, c3, phi3 = check_term env g1 c1 t_node in
-      T.MatchTree(t_match', t_leaf', x, tl, tr, t_node'), lift_type mty,
-      g3, c3,
-      T.merge_effects phi1 (T.merge_effects phi2 phi3)
+    |S.MatchList(var_match, t_nil, x, xs, t_cons), _ ->
+      let t_match = T.mk_term (T.Var var_match) (StrMap.find var_match env) [] [] in
+      let t_nil', g2, c2, phi2 = check_term env g c t_nil in
+      let t_cons', g3, c3, phi3 = check_term env g c t_cons in
+      T.MatchList(t_match, t_nil', x, xs, t_cons'), lift_type mty,
+      g3, c3, T.merge_effects phi2 phi3
+    |S.MatchTree(var_match, t_leaf, x, tl, tr, t_node), _ ->
+      let t_match = T.mk_term (T.Var var_match) (StrMap.find var_match env) [] [] in
+      let t_leaf', g2, c2, phi2 = check_term env g c t_leaf in
+      let t_node', g3, c3, phi3 = check_term env g c t_node in
+      T.MatchTree(t_match, t_leaf', x, tl, tr, t_node'), lift_type mty,
+      g3, c3, T.merge_effects phi2 phi3
     |S.Let(x, t1, t2), _ ->
       let t1', g1, c1, phi1 = check_term env g c t1 in
       let t2', g2, c2, phi2 = check_term (StrMap.add x (T.get_type t1') env) g1 c1 t2 in

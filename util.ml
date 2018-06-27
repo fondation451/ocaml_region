@@ -31,6 +31,10 @@ let mk_rgn = let cpt = ref (-1) in fun () -> incr cpt;
 
 let strmap_diff m1 m2 = StrMap.filter (fun k v -> StrMap.mem k m2) m1
 
+let iter_fun f x =
+  let rec loop x old = if x = old then x else loop (f x) x in
+  loop (f x) x
+
 type ressource =
   |RPAIR
   |RCONS

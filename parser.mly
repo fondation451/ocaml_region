@@ -4,6 +4,7 @@
 
   open Parsing
   open Ast
+  open Util
 
   let loc() = symbol_start_pos(), symbol_end_pos()
 
@@ -69,11 +70,17 @@ atomic_term:
 
 application_term:
   |t = atomic_term { t }
-  |t1 = application_term t2 = application_term
+  |t1 = atomic_term t_l = nonempty_list(atomic_term)
     {
-      match Ast.get_term t2 with
-      |App(t21, t2_l) -> mk (App (t1, t21::t2_l))
-      |_ -> mk (App (t1, [t2]))
+      let v_l =
+        List.map
+          (fun t ->
+            match get_term t with
+            | Var x -> x
+            | _ -> mk_var ())
+          t_l
+      in
+      List.fold_left2 (fun out v t2 -> mk (Let (v, t2, out))) (mk (App (t1, v_l))) v_l t_l
     }
   |t_left = application_term AFFECT t_right = application_term { mk (Assign (t_left, t_right)) }
   |REF t = application_term AT t_rgn = application_term { mk (Ref (t, t_rgn)) }
@@ -110,11 +117,17 @@ statement_term:
   |MATCH t_match = statement_term WITH
    CASE NIL ARROW t_nil = statement_term
    CASE CONS id_x = IDENT id_xs = IDENT ARROW t_cons = statement_term
-    { mk (MatchList (t_match, t_nil, id_x, id_xs, t_cons)) }
+    {
+      let v = mk_var () in
+      mk (Let (v, t_match, mk (MatchList (v, t_nil, id_x, id_xs, t_cons))))
+    }
   |MATCH t_match = statement_term WITH
    CASE LEAF ARROW t_leaf = statement_term
    CASE NODE id_x = IDENT id_l = IDENT id_r = IDENT ARROW t_node = statement_term
-    { mk (MatchTree (t_match, t_leaf, id_x, id_l, id_r, t_node)) }
+    {
+      let v = mk_var () in
+      mk (Let (v, t_match, mk (MatchTree (v, t_leaf, id_x, id_l, id_r, t_node))))
+    }
 ;
 
 pot_term:

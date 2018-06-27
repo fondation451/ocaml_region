@@ -2,6 +2,7 @@
 
 exception Type_Error of string
 exception Ls_Error of string
+exception Verify_Error of string
 
 type rcaml_type =
   |TInt
@@ -47,6 +48,7 @@ and pot =
   |PAdd of pot * pot
   |PMin of pot
   |PMul of pot * pot
+  |PUnit
 
 and rgn_pot = string
 
@@ -62,10 +64,10 @@ and term =
   |Neg of typed_term
   |Comp of comp * typed_term * typed_term
   |Fun of self * string list * typed_term * typed_term * fun_pot_desc option
-  |App of typed_term * typed_term list
+  |App of typed_term * string list
   |If of typed_term * typed_term * typed_term
-  |MatchList of typed_term * typed_term * string * string * typed_term
-  |MatchTree of typed_term * typed_term * string * string * string * typed_term
+  |MatchList of string * typed_term * string * string * typed_term
+  |MatchTree of string * typed_term * string * string * string * typed_term
   |Let of string * typed_term * typed_term
   |Letrec of string * typed_term * typed_term
   |Pair of typed_term * typed_term * typed_term

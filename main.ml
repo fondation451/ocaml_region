@@ -50,6 +50,9 @@ let () =
     let prog = Ls_to_simpl.process prog in
     Printf.printf "(********** RCAML SIMPL **********)\n%s\n\n" (Simpl.show_typed_term prog);
 
+    let prog = Verify_annot.process prog in
+    Printf.printf "(********** RCAML VERIFY **********)\n%s\n\n" (Simpl.show_typed_term prog);
+
     let prog = Simpl_to_check.process prog in
     Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term prog);
 

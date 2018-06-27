@@ -90,10 +90,12 @@ let rec process_ls env_f env t =
       let r = rgn_of t2' in
       S.Fun(f, x_l, t1', t2', pot),
       S.SFun(List.map (fun x -> StrMap.find x env') x_l, mty1, r) *)
-    | S.App (t1, t2_l) -> begin
+    | S.App (t1, arg_l_app) -> begin
       let t1' = process_ls env_f env t1 in
       let t2_l' =
-        List.fold_right (fun t2 t2_l' -> (process_ls env_f env t2)::t2_l') t2_l []
+        List.fold_right
+          (fun x t2_l' -> (process_ls env_f env (S.mk_term (S.Var x) (StrMap.find x env) [] []))::t2_l')
+          arg_l_app []
       in
       if sized_type_returned (S.get_type t1') then
         let (arg_l, t_fun) =
@@ -112,36 +114,34 @@ let rec process_ls env_f env t =
             arg_l t2_l' t_fun
         in
         Printf.printf "OKK CA VA \n";
-        S.App (t1', t2_l'), merge_mty mty (S.get_type (process_ls env_f env tmp))
+        S.App (t1', arg_l_app), merge_mty mty (S.get_type (process_ls env_f env tmp))
       else
       (Printf.printf "NUL !!!\n";
-        S.App (t1', t2_l'), mty)
+        S.App (t1', arg_l_app), mty)
     end
     | S.If (t1, t2, t3) ->
       let t3' = process_ls env_f env t3 in
       S.If (process_ls env_f env t1, process_ls env_f env t2, t3'), S.get_type t3'
-    | S.MatchList (t_match, t_nil, x, xs, t_cons) -> begin
-      let t_match' = process_ls env_f env t_match in
-      let (S.TList (ls, mty_x, r)) = S.get_type t_match' in
+    | S.MatchList (var_match, t_nil, x, xs, t_cons) -> begin
+      let (S.TList (ls, mty_x, r)) = StrMap.find var_match env in
       match ls with
       | Some i when i = 0 ->
         let t_nil' = process_ls env_f env t_nil in
-        S.MatchList (t_match', t_nil', x, xs, t_cons), S.get_type t_nil'
+        S.MatchList (var_match, t_nil', x, xs, t_cons), S.get_type t_nil'
       | _ ->
         let env =
           StrMap.add x mty_x
             (StrMap.add xs (S.TList (shrink_ls ls, mty_x, r)) env)
         in
         let t_cons' = process_ls env_f env t_cons in
-        S.MatchList (t_match', t_nil, x, xs, t_cons'), S.get_type t_cons'
+        S.MatchList (var_match, t_nil, x, xs, t_cons'), S.get_type t_cons'
     end
-    | S.MatchTree (t_match, t_leaf, x, tl, tr, t_node) -> begin
-      let t_match' = process_ls env_f env t_match in
-      let (S.TTree (lsn, lsd, mty_x, r)) = S.get_type t_match' in
+    | S.MatchTree (var_match, t_leaf, x, tl, tr, t_node) -> begin
+      let (S.TTree (lsn, lsd, mty_x, r)) = StrMap.find var_match env in
       match lsn with
       | Some i when i = 0 ->
         let t_leaf' = process_ls env_f env t_leaf in
-        S.MatchTree (t_match', t_leaf', x, tl, tr, t_node), S.get_type t_leaf'
+        S.MatchTree (var_match, t_leaf', x, tl, tr, t_node), S.get_type t_leaf'
       |_ ->
         let env =
           StrMap.add x mty_x
@@ -154,7 +154,7 @@ let rec process_ls env_f env t =
                 env))
         in
         let t_node' = process_ls env_f env t_node in
-        S.MatchTree (t_match', t_leaf, x, tl, tr, t_node'), S.get_type t_node'
+        S.MatchTree (var_match, t_leaf, x, tl, tr, t_node'), S.get_type t_node'
     end
     | S.Let (x, t1, t2) ->
       let t1' = process_ls env_f env t1 in

@@ -283,23 +283,14 @@ let rec type_infer env t =
     s, generalize env
          (S.Fun (f, x_l, t1', t2', pot))
          (S.TFun (List.map (fun mty -> apply_m s mty) a_l, apply_m s mty1, apply_r (snd s) r))
-  | S.App (t1, t2_l) ->
+  | S.App (t1, arg_l) ->
     let mty = S.TAlpha(mk_var ()) in
     let s1, t1' = type_infer env t1 in
     let mty1 = S.get_type t1' in
-    let s2, t2_l' =
-      List.fold_left
-        (fun (s, t_l) t ->
-          let tmp_s, tmp_t = type_infer (apply_env s env) t in
-          compose_subs tmp_s s, tmp_t::t_l)
-        (subs_empty, [])
-        t2_l
-    in
-    let t2_l' = List.rev t2_l' in
-    let ty_t2_l = List.map S.get_type t2_l' in
-    let s3 = mgu (apply_m s2 mty1) (S.TFun(ty_t2_l, mty, S.RAlpha(mk_rgn ()))) in
-    let s = compose_subs s3 (compose_subs s2 s1) in
-    s, generalize env (S.App (t1', t2_l')) (apply_m s mty)
+    let ty_t2_l = List.map (fun x -> S.get_type (StrMap.find x env)) arg_l in
+    let s2 = mgu (apply_m s1 mty1) (S.TFun(ty_t2_l, mty, S.RAlpha(mk_rgn ()))) in
+    let s = compose_subs s2 s1 in
+    s, generalize env (S.App (t1', arg_l)) (apply_m s mty)
   | S.If (t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = S.get_type t1' in
@@ -314,12 +305,11 @@ let rec type_infer env t =
     let s4 = mgu (apply_m s2 mty2) (apply_m s3 mty3) in
     let s = compose_subs s4 (compose_subs s3 (compose_subs s2 (compose_subs s1' s1))) in
     s, generalize env (S.If (t1', t2', t3')) (apply_m s mty2)
-  | S.MatchList (t_match, t_nil, x, xs, t_cons) ->
-    let s1, t_match' = type_infer env t_match in
-    let mty_match = S.get_type t_match' in
+  | S.MatchList (var_match, t_nil, x, xs, t_cons) ->
+    let mty_match = S.get_type (StrMap.find var_match env) in
     let a1 = S.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty_match) (S.TList(None, a1, S.RAlpha(mk_rgn ()))) in
-    let s = compose_subs s1 s2 in
+    let s2 = mgu mty_match (S.TList(None, a1, S.RAlpha(mk_rgn ()))) in
+    let s = s2 in
     let env = apply_env s env in
     let s3, t_nil' = type_infer env t_nil in
     let env = apply_env s3 env in
@@ -334,13 +324,12 @@ let rec type_infer env t =
     let s = compose_subs s4 (compose_subs s3 s) in
     let s5 = mgu (apply_m s mty_nil) (apply_m s mty_cons) in
     let s = compose_subs s5 s in
-    s, generalize env (S.MatchList (t_match', t_nil', x, xs, t_cons')) (apply_m s mty_cons)
-  | S.MatchTree (t_match, t_leaf, x, tl, tr, t_node) ->
-    let s1, t_match' = type_infer env t_match in
-    let mty_match = S.get_type t_match' in
+    s, generalize env (S.MatchList (var_match, t_nil', x, xs, t_cons')) (apply_m s mty_cons)
+  | S.MatchTree (var_match, t_leaf, x, tl, tr, t_node) ->
+    let mty_match = S.get_type (StrMap.find var_match env) in
     let a1 = S.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty_match) (S.TTree(None, None, a1, S.RAlpha(mk_rgn ()))) in
-    let s = compose_subs s1 s2 in
+    let s2 = mgu mty_match (S.TTree(None, None, a1, S.RAlpha(mk_rgn ()))) in
+    let s = s2 in
     let env = apply_env s env in
     let s3, t_leaf' = type_infer env t_leaf in
     let env = apply_env s3 env in
@@ -357,7 +346,7 @@ let rec type_infer env t =
     let s = compose_subs s4 (compose_subs s3 s) in
     let s5 = mgu (apply_m s mty_leaf) (apply_m s mty_node) in
     let s = compose_subs s5 s in
-    s, generalize env (S.MatchTree (t_match', t_leaf', x, tl, tr, t_node')) (apply_m s mty_node)
+    s, generalize env (S.MatchTree (var_match, t_leaf', x, tl, tr, t_node')) (apply_m s mty_node)
   | S.Let (x, t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let mty1 = S.get_type t1' in
@@ -533,12 +522,10 @@ let rec subs_term s t =
      | S.Neg t1 -> S.Neg (subs_term s t1)
      | S.Comp (c, t1, t2) -> S.Comp (c, subs_term s t1, subs_term s t2)
      | S.Fun (f, arg_l, t1, t2, pot) -> S.Fun (f, arg_l, subs_term s t1, subs_term s t2, pot)
-     | S.App (t1, t_l) -> S.App (subs_term s t1, List.map (subs_term s) t_l)
+     | S.App (t1, arg_l) -> S.App (subs_term s t1, arg_l)
      | S.If (t1, t2, t3) -> S.If (subs_term s t1, subs_term s t2, subs_term s t3)
-     | S.MatchList (t_match, t_nil, x, xs, t_cons) ->
-       S.MatchList (subs_term s t_match, subs_term s t_nil, x, xs, subs_term s t_cons)
-     | S.MatchTree (t_match, t_leaf, x, tl, ts, t_node) ->
-       S.MatchTree (subs_term s t_match, subs_term s t_leaf, x, tl, ts, subs_term s t_node)
+     | S.MatchList (var_match, t_nil, x, xs, t_cons) -> S.MatchList (var_match, subs_term s t_nil, x, xs, subs_term s t_cons)
+     | S.MatchTree (var_match, t_leaf, x, tl, ts, t_node) -> S.MatchTree (var_match, subs_term s t_leaf, x, tl, ts, subs_term s t_node)
      | S.Let (x, t1, t2) -> S.Let (x, subs_term s t1, subs_term s t2)
      | S.Letrec (f, t1, t2) -> S.Letrec (f, subs_term s t1, subs_term s t2)
      | S.Pair (t1, t2, t3) -> S.Pair (subs_term s t1, subs_term s t2, subs_term s t3)

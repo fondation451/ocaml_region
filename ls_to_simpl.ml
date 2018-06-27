@@ -94,12 +94,12 @@ let rec process_t env t =
             )
         |_ -> assert false
       end
-      |S.App(t1, t_l) -> T.App(process_t env t1, List.map (process_t env) t_l)
+      |S.App(t1, arg_l) -> T.App(process_t env t1, arg_l)
       |S.If(t1, t2, t3) -> T.If(process_t env t1, process_t env t2, process_t env t3)
-      |S.MatchList(t_match, t_nil, x, xs, t_cons) ->
-        T.MatchList(process_t env t_match, process_t env t_nil, x, xs, process_t env t_cons)
-      |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) ->
-        T.MatchTree(process_t env t_match, process_t env t_leaf, x, tl, tr, process_t env t_node)
+      |S.MatchList(var_match, t_nil, x, xs, t_cons) ->
+        T.MatchList(var_match, process_t env t_nil, x, xs, process_t env t_cons)
+      |S.MatchTree(var_match, t_leaf, x, tl, tr, t_node) ->
+        T.MatchTree(var_match, process_t env t_leaf, x, tl, tr, process_t env t_node)
       |S.Let(x, t1, t2) ->
         let t1' = process_t env t1 in
         let mty1 = T.get_type t1' in
