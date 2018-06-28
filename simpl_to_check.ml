@@ -384,7 +384,9 @@ let rec check_term env g c t =
         raise (T.Error (Printf.sprintf "Error with function region behaviour %s" r))
     |S.App(t1, arg_l), _ -> begin
       let t1', g1, c1, phi1 = check_term env g c t1 in
-      let t_l' = List.map (fun arg -> T.mk_term (T.Var arg) (StrMap.find arg env) [] []) arg_l in
+      let t_l' = List.map (fun arg ->
+      Printf.printf "App %s\n" arg;
+      T.mk_term (T.Var arg) (StrMap.find arg env) [] []) arg_l in
 (*      let t_l', g2, c2, phi2 =
         let rec loop g c t_l =
           match t_l with
@@ -422,15 +424,21 @@ let rec check_term env g c t =
       let t3', g3, c3, phi3 = check_term env g1 c1 t3 in
       T.If(t1', t2', t3'), lift_type mty, g3, c3, T.merge_effects phi1 (T.merge_effects phi2 phi3)
     |S.MatchList(var_match, t_nil, x, xs, t_cons), _ ->
-      let t_match = T.mk_term (T.Var var_match) (StrMap.find var_match env) [] [] in
+      let mty_match = StrMap.find var_match env in
+      let T.TList (ls, mty_x, r) = mty_match in
+      let t_match = T.mk_term (T.Var var_match) mty_match [] [] in
       let t_nil', g2, c2, phi2 = check_term env g c t_nil in
-      let t_cons', g3, c3, phi3 = check_term env g c t_cons in
+      let env' = StrMap.add x mty_x (StrMap.add xs mty_match env) in
+      let t_cons', g3, c3, phi3 = check_term env' g c t_cons in
       T.MatchList(t_match, t_nil', x, xs, t_cons'), lift_type mty,
       g3, c3, T.merge_effects phi2 phi3
     |S.MatchTree(var_match, t_leaf, x, tl, tr, t_node), _ ->
+      let mty_match = StrMap.find var_match env in
+      let T.TTree (lsn, lsd, mty_x, r) = mty_match in
       let t_match = T.mk_term (T.Var var_match) (StrMap.find var_match env) [] [] in
       let t_leaf', g2, c2, phi2 = check_term env g c t_leaf in
-      let t_node', g3, c3, phi3 = check_term env g c t_node in
+      let env' = StrMap.add x mty_x (StrMap.add tl mty_match (StrMap.add tr mty_match env)) in
+      let t_node', g3, c3, phi3 = check_term env' g c t_node in
       T.MatchTree(t_match, t_leaf', x, tl, tr, t_node'), lift_type mty,
       g3, c3, T.merge_effects phi2 phi3
     |S.Let(x, t1, t2), _ ->

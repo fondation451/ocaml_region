@@ -80,7 +80,12 @@ application_term:
             | _ -> mk_var ())
           t_l
       in
-      List.fold_left2 (fun out v t2 -> mk (Let (v, t2, out))) (mk (App (t1, v_l))) v_l t_l
+      List.fold_left2
+        (fun out v t2 ->
+          match get_term t2 with
+          | Var _ -> out
+          | _ -> mk (Let (v, t2, out)))
+        (mk (App (t1, v_l))) v_l t_l
     }
   |t_left = application_term AFFECT t_right = application_term { mk (Assign (t_left, t_right)) }
   |REF t = application_term AT t_rgn = application_term { mk (Ref (t, t_rgn)) }
@@ -118,15 +123,21 @@ statement_term:
    CASE NIL ARROW t_nil = statement_term
    CASE CONS id_x = IDENT id_xs = IDENT ARROW t_cons = statement_term
     {
-      let v = mk_var () in
-      mk (Let (v, t_match, mk (MatchList (v, t_nil, id_x, id_xs, t_cons))))
+      match get_term t_match with
+      | Var v -> mk (MatchList (v, t_nil, id_x, id_xs, t_cons))
+      | _ ->
+        let v = mk_var () in
+        mk (Let (v, t_match, mk (MatchList (v, t_nil, id_x, id_xs, t_cons))))
     }
   |MATCH t_match = statement_term WITH
    CASE LEAF ARROW t_leaf = statement_term
    CASE NODE id_x = IDENT id_l = IDENT id_r = IDENT ARROW t_node = statement_term
     {
-      let v = mk_var () in
-      mk (Let (v, t_match, mk (MatchTree (v, t_leaf, id_x, id_l, id_r, t_node))))
+      match get_term t_match with
+      | Var v -> mk (MatchTree (v, t_leaf, id_x, id_l, id_r, t_node))
+      | _ ->
+        let v = mk_var () in
+        mk (Let (v, t_match, mk (MatchTree (v, t_leaf, id_x, id_l, id_r, t_node))))
     }
 ;
 
