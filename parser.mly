@@ -19,7 +19,7 @@
 %token MATCH WITH CASE
 %token SIZE COLON
 %token LT GT LE GE NOT_EQUAL
-%token RPAIR RCONS RREF RHND LENGTH
+%token RPAIR RCONS RREF RHND RNODE LENGTH
 %token LEAF NODE NODEP DEPTH
 %token EOF
 %token <int> INTEGER
@@ -146,6 +146,7 @@ pot_term:
   |RCONS { PLit(Util.cost_of Util.RCONS) }
   |RREF { PLit(Util.cost_of Util.RREF) }
   |RHND { PLit(Util.cost_of Util.RHND) }
+  |RNODE { PLit(Util.cost_of Util.RNODE) }
   |SIZE LPAR v = IDENT RPAR { PSize(v) }
   |LENGTH LPAR v = IDENT RPAR { PLen(v) }
   |NODEP LPAR v = IDENT RPAR { PNode(v) }

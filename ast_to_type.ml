@@ -144,6 +144,7 @@ let rgnbind r1 r2 =
       StrMap.empty, StrMap.singleton rgn1 r2
 
 let rec mgu mty1 mty2 =
+  Printf.printf "MGU %s %s\n\n" (S.show_rcaml_type mty1) (S.show_rcaml_type mty2);
   match mty1, mty2 with
   | S.TInt, S.TInt | S.TBool, S.TBool | S.TUnit, S.TUnit -> subs_empty
   | S.THnd(r1), S.THnd(r2) -> rgnbind r1 r2
@@ -215,7 +216,7 @@ let get_rgn mty =
 
 let rec type_infer env t =
   let te = S.get_term t in
-(*   Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term t); *)
+   Printf.printf "--------- TYPING PROCCES ------------\n%s\n\n" (S.show_term te);
   match te with
   | S.Var var -> begin
     try
@@ -223,7 +224,7 @@ let rec type_infer env t =
       let t' = instanciate (StrMap.find var env) in
       subs_empty, generalize env (S.get_term t') (S.get_type t')
       (* S.mk_term (S.Var(var)) (generalize env (instanciate (StrMap.find var env))) *)
-    with Not_found -> raise (S.Type_Error "Type_infer")
+    with Not_found -> raise (S.Type_Error (Printf.sprintf "Type_infer %s" (S.show_term te)))
   end
   | S.Unit -> subs_empty, generalize env te S.TUnit
   | S.Bool b -> subs_empty, generalize env te S.TBool
@@ -308,7 +309,7 @@ let rec type_infer env t =
   | S.MatchList (var_match, t_nil, x, xs, t_cons) ->
     let mty_match = S.get_type (StrMap.find var_match env) in
     let a1 = S.TAlpha(mk_var ()) in
-    let s2 = mgu mty_match (S.TList(None, a1, S.RAlpha(mk_rgn ()))) in
+    let s2 = mgu mty_match (S.TList(Lit.Unit, a1, S.RAlpha(mk_rgn ()))) in
     let s = s2 in
     let env = apply_env s env in
     let s3, t_nil' = type_infer env t_nil in
@@ -316,7 +317,7 @@ let rec type_infer env t =
     let env' =
       StrMap.add
         x (S.mk_term (S.Var x) (apply_m s a1) [] [])
-        (StrMap.add xs (S.mk_term (S.Var xs) (S.TList(None, apply_m s a1, S.RAlpha(mk_rgn ()))) [] []) env)
+        (StrMap.add xs (S.mk_term (S.Var xs) (S.TList(Lit.Unit, apply_m s a1, S.RAlpha(mk_rgn ()))) [] []) env)
     in
     let s4, t_cons' = type_infer env' t_cons in
     let mty_nil = S.get_type t_nil' in
@@ -328,7 +329,7 @@ let rec type_infer env t =
   | S.MatchTree (var_match, t_leaf, x, tl, tr, t_node) ->
     let mty_match = S.get_type (StrMap.find var_match env) in
     let a1 = S.TAlpha(mk_var ()) in
-    let s2 = mgu mty_match (S.TTree(None, None, a1, S.RAlpha(mk_rgn ()))) in
+    let s2 = mgu mty_match (S.TTree(Lit.Unit, Lit.Unit, a1, S.RAlpha(mk_rgn ()))) in
     let s = s2 in
     let env = apply_env s env in
     let s3, t_leaf' = type_infer env t_leaf in
@@ -337,8 +338,8 @@ let rec type_infer env t =
       StrMap.add
         x (S.mk_term (S.Var x) (apply_m s a1) [] [])
         (StrMap.add
-          tl (S.mk_term (S.Var tl) (S.TTree(None, None, apply_m s a1, S.RAlpha(mk_rgn ()))) [] [])
-          (StrMap.add tr (S.mk_term (S.Var tr) (S.TTree(None, None, apply_m s a1, S.RAlpha(mk_rgn ()))) [] []) env))
+          tl (S.mk_term (S.Var tl) (S.TTree(Lit.Unit, Lit.Unit, apply_m s a1, S.RAlpha(mk_rgn ()))) [] [])
+          (StrMap.add tr (S.mk_term (S.Var tr) (S.TTree(Lit.Unit, Lit.Unit, apply_m s a1, S.RAlpha(mk_rgn ()))) [] []) env))
     in
     let s4, t_node' = type_infer env' t_node in
     let mty_leaf = S.get_type t_leaf' in
@@ -400,7 +401,7 @@ let rec type_infer env t =
     let mty1 = S.get_type t1' in
     let tmp = mk_var () in
     let a1 = S.TAlpha(tmp) in
-    let s2 = mgu (apply_m s1 mty1) (S.TList(None, a1, S.RAlpha(mk_rgn ()))) in
+    let s2 = mgu (apply_m s1 mty1) (S.TList(Lit.Unit, a1, S.RAlpha(mk_rgn ()))) in
     let s = compose_subs s2 s1 in
   let st, sr = s in
   (* Printf.printf "\n\n\n&&&&&&&&&&&&& HD SUB (%s) :\n%s\n\nSUBSTITUTION RGN :\n%s\n\n" tmp (strmap_str st S.show_rcaml_type) (strmap_str sr S.show_regions); *)
@@ -409,11 +410,11 @@ let rec type_infer env t =
     let s1, t1' = type_infer env t1 in
     let mty1 = S.get_type t1' in
     let a1 = S.TAlpha(mk_var ()) in
-    let s2 = mgu (apply_m s1 mty1) (S.TList(None, a1, S.RAlpha(mk_rgn ()))) in
+    let s2 = mgu (apply_m s1 mty1) (S.TList(Lit.Unit, a1, S.RAlpha(mk_rgn ()))) in
     let s = compose_subs s2 s1 in
     s, generalize env (S.Tl t1') (apply_m s mty1)
-  | S.Nil -> subs_empty, generalize env te (S.TList(None, S.TAlpha(mk_var ()), S.RAlpha(mk_rgn ())))
-  | S.Leaf -> subs_empty, generalize env te (S.TTree(None, None, S.TAlpha(mk_var ()), S.RAlpha(mk_rgn ())))
+  | S.Nil -> subs_empty, generalize env te (S.TList(Lit.Unit, S.TAlpha(mk_var ()), S.RAlpha(mk_rgn ())))
+  | S.Leaf -> subs_empty, generalize env te (S.TTree(Lit.Unit, Lit.Unit, S.TAlpha(mk_var ()), S.RAlpha(mk_rgn ())))
   | S.Cons (t1, t2, t3) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -425,10 +426,10 @@ let rec type_infer env t =
     let mty3 = S.get_type t3' in
     let r = S.RAlpha(mk_rgn ()) in
     let s = compose_subs s3 (compose_subs s2 s1) in
-    let s4 = mgu (apply_m s mty2) (S.TList(None, apply_m s mty1, S.RAlpha(mk_rgn ()))) in
+    let s4 = mgu (apply_m s mty2) (S.TList(Lit.Unit, apply_m s mty1, S.RAlpha(mk_rgn ()))) in
     let s5 = mgu (apply_m s mty3) (S.THnd r) in
     let s = compose_subs s5 (compose_subs s4 s) in
-    s, generalize env (S.Cons (t1', t2', t3')) (apply_m s (S.TList (None, apply_m s mty1, r)))
+    s, generalize env (S.Cons (t1', t2', t3')) (apply_m s (S.TList (Lit.Unit, apply_m s mty1, r)))
   | S.Node (t1, t2, t3, t4) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in
@@ -443,11 +444,11 @@ let rec type_infer env t =
     let mty4 = S.get_type t4' in
     let r = S.RAlpha(mk_rgn ()) in
     let s = compose_subs s4 (compose_subs s3 (compose_subs s2 s1)) in
-    let s5 = mgu (apply_m s mty2) (S.TTree(None, None, apply_m s mty1, S.RAlpha(mk_rgn ()))) in
-    let s6 = mgu (apply_m s mty3) (S.TTree(None, None, apply_m s mty1, S.RAlpha(mk_rgn ()))) in
+    let s5 = mgu (apply_m s mty2) (S.TTree(Lit.Unit, Lit.Unit, apply_m s mty1, S.RAlpha(mk_rgn ()))) in
+    let s6 = mgu (apply_m s mty3) (S.TTree(Lit.Unit, Lit.Unit, apply_m s mty1, S.RAlpha(mk_rgn ()))) in
     let s7 = mgu (apply_m s mty4) (S.THnd r) in
     let s = compose_subs s7 (compose_subs s6 (compose_subs s5 s)) in
-    s, generalize env (S.Node (t1', t2', t3', t4')) (apply_m s (S.TTree (None, None, apply_m s mty1, r)))
+    s, generalize env (S.Node (t1', t2', t3', t4')) (apply_m s (S.TTree (Lit.Unit, Lit.Unit, apply_m s mty1, r)))
   | S.Ref (t1, t2) ->
     let s1, t1' = type_infer env t1 in
     let env = apply_env s1 env in

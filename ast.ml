@@ -2,6 +2,7 @@
 
 exception Type_Error of string
 exception Ls_Error of string
+exception Ls_Infer_Error of string
 exception Verify_Error of string
 
 type rcaml_type =
@@ -20,7 +21,8 @@ and regions =
   |RRgn of string
   |RAlpha of string
 
-and list_sized = int option
+(*and list_sized = int option*)
+and list_sized = Lit.t
 
 and binop =
   |Op_add

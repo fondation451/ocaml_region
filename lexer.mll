@@ -39,6 +39,7 @@
       "rcons", RCONS;
       "rref", RREF;
       "rhnd", RHND;
+      "rnode", RNODE;
       "_length", LENGTH;
       "Leaf", LEAF;
       "Node", NODE;
@@ -64,7 +65,7 @@ let regCar = [' '-'!'] | ['#'-'['] | [']'-'~' ]
 let escCar = '\\' (['n' 't' '"' '\\'] as esc)
 let alpha = ['a'-'z' 'A'-'Z']
 let digit = ['0'-'9']
-let ident = alpha (alpha | '_' | digit)*
+let ident = alpha (alpha | '_' | digit | ''')*
 let ident_cont = '_' alpha (alpha | '_' | digit)*
 
 rule token = parse

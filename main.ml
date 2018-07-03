@@ -44,10 +44,10 @@ let () =
     let prog = Ast_to_type.process prog in
     Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Ast.show_typed_term prog);
 
-    let prog = Type_to_ls.process prog in
+    let prog = Type_to_ls_bis.process prog in
     Printf.printf "(********** RCAML LS **********)\n%s\n\n" (Ast.show_typed_term prog);
 
-    let prog = Ls_to_simpl.process prog in
+(*    let prog = Ls_to_simpl.process prog in
     Printf.printf "(********** RCAML SIMPL **********)\n%s\n\n" (Simpl.show_typed_term prog);
 
     let prog = Verify_annot.process prog in
@@ -59,7 +59,7 @@ let () =
     let bound = Check_to_analysis.process prog in
     Printf.printf "(********** RCAML REGIONS BYTES BOUND **********)\n";
     Printf.printf "Bound: %d bytes\n" bound;
-
+*)
     ()
 
   with

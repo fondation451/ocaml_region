@@ -31,9 +31,16 @@ let mk_rgn = let cpt = ref (-1) in fun () -> incr cpt;
 
 let strmap_diff m1 m2 = StrMap.filter (fun k v -> StrMap.mem k m2) m1
 
-let iter_fun f x =
-  let rec loop x old = if x = old then x else loop (f x) x in
+let iter_fun f x eq =
+  let rec loop x old = if eq x old then x else loop (f x) x in
   loop (f x) x
+
+let hash_s s =
+  let out = ref 0 in
+  for i = 0 to String.length s - 1 do
+    out := !out + (Char.code s.[i])
+  done;
+  !out
 
 type ressource =
   |RPAIR
@@ -54,3 +61,4 @@ let cost_of ress =
   |RREF -> 1
   |RHND -> 1
   |RCLO -> 1
+

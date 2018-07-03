@@ -1,237 +1,45 @@
 open Util
 
-(* module S = Ast *)
 module S = Simpl
 
-type inst_pot =
-  | IPPot of string
-  | IPLit of int
-  | IPSize of string
-  | IPLen of string
-  | IPNode of string
-  | IPDepth of string
-  | IPAdd of inst_pot list
-(*  | IPMin of inst_pot*)
-  | IPMul of inst_pot list
-  | IPUnit
-[@@deriving show { with_path = false }]
-
-let hash_s s =
-  let out = ref 0 in
-  for i = 0 to String.length s - 1 do
-    out := !out + (Char.code s.[i])
-  done;
-  !out
-
-let rec compare_pot_l p_l p_l' out =
-  match p_l, p_l' with
-  | [], [] -> out
-  | [], rem -> out - List.length rem
-  | rem, [] -> out + List.length rem
-  | h::t, h'::t' -> compare_pot_l t t' (out + compare_pot h h')
-and compare_pot p p' =
-  match p, p' with
-  | IPPot v, IPPot v' ->
-    let h = hash_s v and h'= hash_s v' in
-    if h > h' then 1 else if h < h' then -1 else 0
-  | IPLit i, IPLit i' -> compare i i'
-  | IPAdd p_l, IPAdd p_l' | IPMul p_l, IPMul p_l' -> compare_pot_l p_l p_l' 0
-  | IPUnit, IPUnit -> 0
-  | IPMul _, _ -> 1
-  | IPAdd _, IPMul _ -> -1
-  | IPAdd _, IPPot _ | IPAdd _, IPLit _ -> 1
-  | IPPot _, IPMul _ | IPPot _, IPAdd _ -> -1
-  | IPPot _, IPLit _ -> 1
-  | IPLit _, _ -> -1
-  | _ -> 0
-
-(*let rgn_of = function
-  | S.RRgn r -> r
-  | S.RAlpha r -> r
-*)
 let rgn_of r = r
 
 let show_out out =
-  StrMap.fold (fun k pot out -> Printf.sprintf "%s%s : %s\n" out k (show_inst_pot pot)) out ""
-
-
-let rec apply_p env = function
-  | IPPot var when StrMap.mem var env ->
-    Printf.printf "DEBUG1 %s\n" var;
-    StrMap.find var env
-  | IPAdd p_l -> IPAdd (List.map (apply_p env) p_l)
-  | IPMul p_l -> IPMul (List.map (apply_p env) p_l)
-  | _ as out -> out
-
-let apply env pot_l =
-  let work pot_l = StrMap.map (apply_p env) pot_l in
-  iter_fun work pot_l
-
-let separate p_l =
-  let rec loop p_l out_i out_p =
-    match p_l with
-    | p::p_l' -> begin
-      match p with
-      | IPLit i -> loop p_l' (i::out_i) out_p
-      | _ -> loop p_l' out_i (p::out_p)
-    end
-    | [] -> out_i, out_p
-  in loop p_l [] []
-
-let rec order_p = function
-  | IPAdd p_l -> IPAdd (List.sort compare_pot p_l)
-  | IPMul p_l -> IPMul (List.sort compare_pot p_l)
-  | _ as unchanged -> unchanged
-
-let order pot_l = StrMap.map order_p pot_l
-
-let rec simplify_p = function
-  | IPAdd [] -> IPLit 0
-  | IPMul [] -> IPLit 1
-  | IPAdd [p] | IPMul [p] -> p
-  | IPAdd p_l -> IPAdd (List.filter (fun p -> p <> IPUnit && p <> IPLit 0) (List.map simplify_p p_l))
-  | IPMul p_l ->
-    if List.mem (IPLit 0) p_l then
-      IPLit 0
-    else
-      IPMul (List.filter (fun p -> p <> IPUnit) (List.map simplify_p p_l))
-  | _ as unchanged -> unchanged
-
-let simplify pot_l =
-  let work pot_l = StrMap.map simplify_p pot_l in
-  order (iter_fun work pot_l)
-
-let rec agg_p = function
-  | IPAdd p_l ->
-    let p_l' =
-      List.fold_left
-        (fun out p ->
-          match agg_p p with
-          | IPAdd p_l' -> List.rev_append p_l' out
-          | _ as p'-> p'::out)
-        [] p_l
-    in
-    let i_l, p_l = separate p_l' in
-    let i = List.fold_left (fun out i -> out + i) 0 i_l in
-    IPAdd ((IPLit i)::p_l)
-  | IPMul p_l ->
-    let p_l' =
-      List.fold_left
-        (fun out p ->
-          match agg_p p with
-          | IPMul p_l' -> List.rev_append p_l' out
-          | _ as p' -> p'::out)
-        [] p_l
-    in
-    let i_l, p_l = separate p_l' in
-    let i = List.fold_left (fun out i -> out * i) 1 i_l in
-    IPMul ((IPLit i)::p_l)
-  | _ as out -> out
-
-let agg pot_l = simplify (StrMap.map agg_p pot_l)
-
-let rec expansion_p = function
-  | IPMul p_l as unchanged ->
-    let p_l = List.map expansion_p p_l in
-    let lit_l, op_l = separate p_l in
-    if op_l <> [] then begin
-      match List.hd op_l with
-      | IPAdd p_a ->
-        IPAdd (List.map (fun p -> IPMul (List.rev_append (List.map (fun i -> IPLit i) lit_l) [p])) p_a)
-      | _ -> IPMul p_l
-    end else
-      unchanged
-  | IPAdd p_l -> IPAdd (List.map expansion_p p_l)
-  | _ as unchanged -> unchanged
-
-let expansion pot_l = agg (StrMap.map expansion_p pot_l)
-
-let fact p p' =
-  match p, p' with
-  | IPPot v, IPPot v' when v = v' -> p, IPLit 2
-  | IPPot v, IPMul p_l | IPMul p_l, IPPot v ->
-    if List.mem (IPPot v) p_l then
-      p, IPAdd ((IPLit 1)::(List.filter (fun p -> p <> IPPot v) p_l))
-    else
-      IPUnit, IPUnit
-  | IPMul p_l, IPMul p_l' -> begin
-    let pot_p = List.filter (function |IPPot _ -> true | _ -> false) p_l in
-    let pot_p' = List.filter (function |IPPot _ -> true | _ -> false) p_l' in
-    match List.filter (fun p -> List.mem p pot_p') pot_p with
-    |[] -> IPUnit, IPUnit
-    |p_com::_ ->
-      let not_p_com p = p <> p_com in
-      p_com, IPAdd [IPMul (List.filter (fun p -> p <> p_com) p_l) ; IPMul (List.filter (fun p -> p <> p_com) p_l')]
-  end
-  | _ -> IPUnit, IPUnit
-
-let rec factorize_p = function
-  | IPAdd p_l ->
-    let p_l = List.map factorize_p p_l in
-    let rec loop_p p p_l out =
-      match p_l with
-      | [] -> None
-      | p'::p_l' -> begin
-        match fact p p' with
-        | IPUnit, IPUnit -> loop_p p p_l' (p'::out)
-        | f, add_p -> Some (List.rev_append p_l' ((IPMul [f ; add_p])::out))
-      end
-    in
-    let rec loop p_l out =
-      match p_l with
-      | [] -> out
-      | p::p_l' -> begin
-        match loop_p p p_l' [] with
-        | None -> loop p_l' (p::out)
-        | Some p_l'' -> List.rev_append out p_l''
-      end
-    in
-    IPAdd (loop p_l [])
-  | IPMul p_l -> IPMul (List.map factorize_p p_l)
-  | _ as unchanged -> unchanged
-
-let factorize pot_l =
-  let work pot_l = pot_l |> StrMap.map factorize_p |> (fun out -> Printf.printf "factorize\n%s\n" (show_out out) ; out) |> agg in
-  iter_fun work pot_l
-
-let canonic_form env pot_l =
-  let work pot_l =
-    pot_l
-    |> (fun out -> Printf.printf "canonic_form\n%s\n" (show_out out) ; print_newline (); out)
-    |> apply env |> agg |> expansion |> agg |> factorize |> agg in
-  iter_fun work pot_l
+  StrMap.fold (fun k pot out -> Printf.sprintf "%s%s : %s\n" out k (Lit.show pot)) out ""
 
 let rec remove_p = function
-  | IPPot _ -> IPLit 0
-  | IPAdd p_l -> IPAdd (List.map remove_p p_l)
-  | IPMul p_l -> IPMul (List.map remove_p p_l)
+  | Lit.Var _ -> Lit.Lit 0
+  | Lit.Add p_l -> Lit.Add (List.map remove_p p_l)
+  | Lit.Mul p_l -> Lit.Mul (List.map remove_p p_l)
   | _ as unchanged -> unchanged
 
-let remove pot_l = StrMap.map remove_p pot_l
-
-let positive_p = function
-  | IPLit i -> i >= 0
-  | _ -> assert false
-
-let positive pot_l = StrMap.for_all (fun _ p -> positive_p p) pot_l
+let remove lit_l = StrMap.map remove_p lit_l
+let positive lit_l = StrMap.for_all (fun _ l -> Lit.positive l) lit_l
+let order lit_l = StrMap.map Lit.order lit_l
+let simplify_lit_l lit_l = StrMap.map Lit.simplify lit_l
+let agg lit_l = StrMap.map Lit.agg lit_l
+let expansion lit_l = StrMap.map Lit.expansion lit_l
+let factorize lit_l = StrMap.map Lit.factorize lit_l
+let apply env lit_l = StrMap.map (Lit.apply env) lit_l
+let canonic_form env lit_l = StrMap.map (Lit.canonic_form env) lit_l
 
 let rec pot_of env t =
   match S.get_term t with
   | S.Var v -> begin
     Printf.printf "DEBUG2 %s\n" v;
-    env, try StrMap.find v env with Not_found -> IPPot v
+    env, try StrMap.find v env with Not_found -> Lit.Var v
   end
   | S.Letrec (v, t1, t2) | S.Let (v, t1, t2) ->
     let env, pot_t1 = pot_of env t1 in
     pot_of (StrMap.add v pot_t1 env) t2
   | S.MatchList (var_match, t_nil, x, xs, t_cons) ->
     let env, pot_t_nil = pot_of env t_nil in
-    let env' = StrMap.add x IPUnit (StrMap.add xs (IPAdd [IPPot var_match ; IPLit (-1)]) env) in
+    let env' = StrMap.add x Lit.Unit (StrMap.add xs (Lit.Add [Lit.Var var_match ; Lit.Lit (-1)]) env) in
     pot_of env' t_cons
   | S.MatchTree (var_match, t_leaf, x, tl, tr, t_node) ->
     Printf.printf "AQUI\n";
     let env, pot_t_leaf = pot_of env t_leaf in
-    let env' = StrMap.add x IPUnit (StrMap.add var_match (IPAdd [IPPot tl ; IPPot tr ; IPLit 1]) env) in
+    let env' = StrMap.add x Lit.Unit (StrMap.add var_match (Lit.Add [Lit.Var tl ; Lit.Var tr ; Lit.Lit 1]) env) in
     pot_of env' t_node
   | S.Pair (t1, t2, t3) -> pot_of env t1
   | S.Fst t1 -> pot_of env t1
@@ -239,40 +47,37 @@ let rec pot_of env t =
   | S.Hd t1 -> pot_of env t1
   | S.Tl t1 ->
     let env, pot_t1 = pot_of env t1 in
-    env, IPAdd [pot_t1 ; IPLit (-1)]
-  | S.Nil -> env, IPLit 0
+    env, Lit.Add [pot_t1 ; Lit.Lit (-1)]
+  | S.Nil -> env, Lit.Lit 0
   | S.Cons (t1, t2, t3) ->
     let env, pot_t2 = pot_of env t2 in
-    env, IPAdd[pot_t2 ; IPLit 1]
-  | S.Leaf -> env, IPLit 0
+    env, Lit.Add[pot_t2 ; Lit.Lit 1]
+  | S.Leaf -> env, Lit.Lit 0
   | S.Node (t1, t2, t3, t4) -> pot_of env t1
   | S.Ref (t1, t2) -> pot_of env t1
   | S.Assign (t1, t2) -> pot_of env t1
   | S.Deref t1 -> pot_of env t1
-  | S.Newrgn -> env, IPUnit
+  | S.Newrgn -> env, Lit.Unit
   | S.Aliasrgn (t1, t2) -> pot_of env t1
   | S.Freergn t1 -> pot_of env t1
   | S.Sequence (t1, t2) -> pot_of env t1
-  | _ -> env, IPUnit
+  | _ -> env, Lit.Unit
 
 let rec instanciate pot arg_l =
   let subs i = List.nth arg_l i in
   match pot with
-  | S.PPot id -> IPPot id
-  | S.PLit i ->  IPLit i
-  | S.PSize i -> IPPot (subs i)
-  | S.PLen i -> IPPot (subs i)
-  | S.PNode i -> IPPot (subs i)
-  | S.PDepth i -> IPPot (subs i)
-  | S.PAdd (p1, p2) -> IPAdd [instanciate p1 arg_l ; instanciate p2 arg_l]
-  | S.PMin p1 -> IPMul [IPLit (-1) ; instanciate p1 arg_l]
-  | S.PMul (p1, p2) -> IPMul [instanciate p1 arg_l ; instanciate p2 arg_l]
-  | S.PUnit -> IPUnit
+  | S.PPot id -> Lit.Var id
+  | S.PLit i ->  Lit.Lit i
+  | S.PSize i | S.PLen i | S.PNode i | S.PDepth i -> Lit.Var (subs i)
+  | S.PAdd (p1, p2) -> Lit.Add [instanciate p1 arg_l ; instanciate p2 arg_l]
+  | S.PMin p1 -> Lit.Mul [Lit.Lit (-1) ; instanciate p1 arg_l]
+  | S.PMul (p1, p2) -> Lit.Mul [instanciate p1 arg_l ; instanciate p2 arg_l]
+  | S.PUnit -> Lit.Unit
 
 let add_to_env x mty env =
   let add_ls x = function
-    | Some i -> StrMap.add x (IPLit i) env
-    | None -> StrMap.add x (IPPot (mk_var ())) env
+    | Some i -> StrMap.add x (Lit.Lit i) env
+    | None -> StrMap.add x (Lit.Var (mk_var ())) env
   in
   match mty with
   | S.TList (ls, mty1, r) -> add_ls x ls
@@ -310,7 +115,7 @@ let rec verify_t t env s_pot_l out =
         List.fold_left
           (fun out_p (r, pot) ->
             let pot' = instanciate (fst pot) arg_l in
-            StrMap.add r (try IPAdd [StrMap.find r out_p ; pot'] with Not_found -> pot') out_p)
+            StrMap.add r (try Lit.Add [StrMap.find r out_p ; pot'] with Not_found -> pot') out_p)
           out_p pot_l)
       out
   | S.If (t1, t2, t3) ->
@@ -336,8 +141,8 @@ let rec verify_t t env s_pot_l out =
     let out = verify_t t3 env s_pot_l (verify_t t2 env s_pot_l (verify_t t1 env s_pot_l out)) in
     List.map
       (fun out_p ->
-        let pot_r = try StrMap.find r out_p with Not_found -> IPUnit in
-        StrMap.add r (IPAdd [pot_r ; IPLit (cost_of RPAIR)]) out_p)
+        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
+        StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RPAIR)]) out_p)
       out
   | S.Fst t1 ->
     verify_t t1 env s_pot_l out
@@ -354,8 +159,8 @@ let rec verify_t t env s_pot_l out =
     let out = verify_t t3 env s_pot_l (verify_t t2 env s_pot_l (verify_t t1 env s_pot_l out)) in
     List.map
       (fun out_p ->
-        let pot_r = try StrMap.find r out_p with Not_found -> IPUnit in
-        StrMap.add r (IPAdd [pot_r ; IPLit (cost_of RCONS)]) out_p)
+        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
+        StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RCONS)]) out_p)
       out
   | S.Leaf -> out
   | S.Node (t1, t2, t3, t4) ->
@@ -364,8 +169,8 @@ let rec verify_t t env s_pot_l out =
     let out = verify_t t4 env s_pot_l (verify_t t3 env s_pot_l (verify_t t2 env s_pot_l (verify_t t1 env s_pot_l out))) in
     List.map
       (fun out_p ->
-        let pot_r = try StrMap.find r out_p with Not_found -> IPUnit in
-        StrMap.add r (IPAdd [pot_r ; IPLit (cost_of RNODE)]) out_p)
+        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
+        StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RNODE)]) out_p)
       out
   | S.Ref (t1, t2) ->
     let S.TRef(_, _, r) = mty in
@@ -373,8 +178,8 @@ let rec verify_t t env s_pot_l out =
     let out = verify_t t2 env s_pot_l (verify_t t1 env s_pot_l out) in
     List.map
       (fun out_p ->
-        let pot_r = try StrMap.find r out_p with Not_found -> IPUnit in
-        StrMap.add r (IPAdd [pot_r ; IPLit (cost_of RREF)]) out_p)
+        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
+        StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RREF)]) out_p)
       out
   | S.Assign (t1, t2) -> verify_t t2 env s_pot_l (verify_t t1 env s_pot_l out)
   | S.Deref t1 -> verify_t t1 env s_pot_l out
@@ -391,9 +196,9 @@ and verify f arg_l t s_pot_l =
       StrMap.empty (StrMap.find f s_pot_l)
   in
   let out = verify_t t StrMap.empty s_pot_l [StrMap.empty] in
-  let env = List.fold_left (fun env x -> StrMap.add x (IPPot x) env) StrMap.empty arg_l in
+  let env = List.fold_left (fun env x -> StrMap.add x (Lit.Var x) env) StrMap.empty arg_l in
   let env, _ = pot_of env t in
-  Printf.printf "ENV : %s\n" (strmap_str env show_inst_pot);
+  Printf.printf "ENV : %s\n" (strmap_str env Lit.show);
   List.iter (fun pot_l -> Printf.printf "verified\n%s\n" (show_out pot_l)) out;
   Printf.printf "annotated\n%s\n" (show_out f_pot);
   let out = List.map (canonic_form env) out in
@@ -407,7 +212,7 @@ and verify f arg_l t s_pot_l =
           (fun r pot ->
             try
               let pot_p = StrMap.find r out_p in
-              IPAdd [pot ; IPMul [IPLit (-1) ; pot_p]]
+              Lit.Add [pot ; Lit.Mul [Lit.Lit (-1) ; pot_p]]
             with Not_found -> pot)
           f_pot)
       out
