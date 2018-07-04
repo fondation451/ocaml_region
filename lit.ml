@@ -12,6 +12,7 @@ type t =
   | Unit
 [@@deriving show { with_path = false }]
 
+
 let remove_from_list l f =
   let rec loop l out =
     match l with
@@ -261,3 +262,8 @@ let resolve_0 lit =
       loop (canonic (Mul l_l')) (out / i)
     | Unit -> raise Bad_equation
   in loop lit 0
+
+let from_int i = Lit i
+let add l l' = canonic (Add [l ; l'])
+let sub l l' = canonic (Add [l ; Mul [Lit (-1) ; l']])
+let mul l l' = canonic (Mul [l ; l'])

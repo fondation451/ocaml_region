@@ -76,8 +76,8 @@ let rec instanciate pot arg_l =
 
 let add_to_env x mty env =
   let add_ls x = function
-    | Some i -> StrMap.add x (Lit.Lit i) env
-    | None -> StrMap.add x (Lit.Var (mk_var ())) env
+    | Lit.Lit i -> StrMap.add x (Lit.Lit i) env
+    | _ -> StrMap.add x (Lit.Var (mk_var ())) env
   in
   match mty with
   | S.TList (ls, mty1, r) -> add_ls x ls

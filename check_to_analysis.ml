@@ -53,7 +53,7 @@ let rec apply_subs_pot s pot =
   |Some(fun_pot_l) -> Some(List.map (fun (r, (p1, p2)) -> (apply_subs_r s r, (p1, p2))) fun_pot_l)
 
 let rec apply_subs_t s sv t =
-  let pred_ls ls = match ls with |Some(i) -> Some(i-1) |_ -> None in
+  let pred_ls ls = Lit.sub ls (Lit.from_int 1) in
   let te = S.get_term t in
   let mty = S.get_type t in
   let alpha_l = S.get_alpha_l t in
@@ -373,8 +373,8 @@ let rec instanciate_fun f i t_l out =
   |[] -> assert false
   |hd::tl when i = 0 -> begin
     match f (S.get_type hd) with
-    |Some(i) -> H.PLit(i), out
-    |None -> let r = get_rgn (S.get_type hd) in H.PPot(r), r::out
+    | Lit.Lit i -> H.PLit(i), out
+    | _ -> let r = get_rgn (S.get_type hd) in H.PPot(r), r::out
   end
   |hd::tl -> instanciate_fun f (i-1) tl out
 
@@ -610,24 +610,24 @@ let process_r r_l cr_l t =
     |S.MatchList(t_match, t_nil, x, xs, t_cons) -> begin
       let (S.TList(ls, _, _)) = S.get_type t_match in
       match ls with
-      |None -> assert false
-      |Some(size) ->
+      |Lit.Lit size ->
         let r_cost = process_t t_match r_cost env_f in
         if size = 0 then
           process_t t_nil r_cost env_f
         else
           process_t t_cons r_cost env_f
+      |_ -> assert false
     end
     |S.MatchTree(t_match, t_leaf, x, tl, tr, t_node) -> begin
       let (S.TTree(_, lsd, _, _)) = S.get_type t_match in
       match lsd with
-      |None -> assert false
-      |Some(size) ->
+      |Lit.Lit size ->
         let r_cost = process_t t_match r_cost env_f in
         if size = 0 then
           process_t t_leaf r_cost env_f
         else
           process_t t_node r_cost env_f
+      |_ -> assert false
     end
     |S.Let(x, t1, t2) -> process_t t2 (process_t t1 r_cost env_f) env_f
     |S.Letrec(x, t1, t2) ->
