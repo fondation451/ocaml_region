@@ -23,6 +23,12 @@ let rec minus_mty mty mty' =
   | S.TAlpha a, _ -> mty'
   | _ -> mty
 
+let add_i_to_sub x i s =
+  if not (StrMap.mem x s) || (StrMap.find x s = Lit.Lit i) then
+    StrMap.add x (Lit.Lit i) s
+  else
+    raise (S.Ls_Infer_Error "")
+
 let add_to_sub ls ls' env =
   match ls with
   | Lit.Var x -> StrMap.add x ls' env
@@ -93,6 +99,25 @@ let instanciate mty l_lit =
 
 let sub_union s1 s2 = StrMap.union (fun _ l1 l2 -> Some l1) s1 s2
 
+let resolve lit_nul =
+  let rec loop lit_nul sol =
+  Printf.printf "RESOlVE CURRENT LIT NUl :\n";
+  List.iter (fun l -> Printf.printf "{\n%s\n}\n" (Lit.show l)) lit_nul;
+  Printf.printf "RESOlVE CURRENT SOL :\n%s\n" (strmap_str sol Lit.show);
+    let out_sol, out_lit =
+      List.fold_left
+        (fun (out_sol, out_lit) l ->
+          match Lit.resolve_0 l with
+          | None -> out_sol, l::out_lit
+          | Some (x, i) -> add_i_to_sub x i out_sol, out_lit)
+        (sol, []) lit_nul
+    in
+    if out_lit = [] || List.length out_lit = List.length lit_nul then
+      out_sol
+    else
+      loop (List.map (fun l -> Lit.canonic (Lit.apply out_sol l)) out_lit) out_sol
+  in loop lit_nul StrMap.empty
+
 let rec infer f arg_l f_mty env t =
   print_newline ();
   let te = S.get_term t in
@@ -140,7 +165,43 @@ let rec infer f arg_l f_mty env t =
         | _ -> assert false
       in
       mty_match
-    | S.MatchTree (t, t_leaf, x, tl, tr, t_node) -> assert false
+    | S.MatchTree (t, t_leaf, x, tl, tr, t_node) ->
+      let S.TTree (lsn, lsd, mty_x, r) = StrMap.find t env in
+      let mty_leaf = infer_t env t_leaf in
+      let env1 =
+        StrMap.add x mty_x
+          (StrMap.add tl (S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Lit 0, mty_x, r))
+            (StrMap.add tr (S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Lit 0, mty_x, r)) env))
+      in
+      let env2 =
+        StrMap.add x mty_x
+          (StrMap.add tl (S.TTree (Lit.Lit 0, Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r))
+            (StrMap.add tr (S.TTree (Lit.Lit 0, Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r)) env))
+      in
+      let env =
+        StrMap.add x mty_x
+          (StrMap.add tl (S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r))
+            (StrMap.add tr (S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r)) env))
+      in
+      let mty_node = infer_t env t_node in
+      let mty_node1 = infer_t env1 t_node in
+      let mty_node2 = infer_t env2 t_node in
+      let mty_match =
+        match lsn, lsd with
+        | Lit.Lit i, Lit.Lit i' -> if i = 0 then mty_leaf else List.rev_append mty_node1 mty_node2
+        | Lit.Var v, Lit.Var v' ->
+          List.rev_append
+            (List.map
+              (fun (sub, mty) -> StrMap.add v (Lit.Lit 0) (StrMap.add v' (Lit.Lit 0) sub), mty)
+              mty_leaf)
+(*            mty_node*)
+(*            (List.rev_append mty_node1 mty_node2) *)
+            (List.rev_append
+              (List.map (fun (sub, mty) -> StrMap.add v (Lit.Lit 0) sub, mty) mty_node2)
+              (List.map (fun (sub, mty) -> StrMap.add v' (Lit.Lit 0) sub, mty) mty_node1))
+        | _ -> assert false
+      in
+      mty_match
     | S.Let (x, t1, t2) | S.Letrec (x, t1, t2) ->
       let mty1 = infer_t env t1 in
       let mty_x = snd (List.hd mty1) in
@@ -226,36 +287,21 @@ let rec infer f arg_l f_mty env t =
   Printf.printf "MTY OUT : \n%s\n\n" (S.show_rcaml_type mty_out);
   Printf.printf "MTY INFERED :\n";
   List.iter (fun (s, m) -> Printf.printf "{\n%s\n%s\n}\n" (strmap_str s Lit.show) (S.show_rcaml_type m)) mty_infered;
-  let mty_dif = List.map (fun (s, m) -> minus_mty (apply false s mty_out) m) mty_infered in
+  let mty_dif = List.map (fun (s, m) -> apply false s (minus_mty mty_out m)) mty_infered in
   Printf.printf "MTY DIF :\n";
   List.iter (fun m -> Printf.printf "{\n%s\n}\n" (S.show_rcaml_type m)) mty_dif;
   let lit_nul = List.map Lit.canonic (List.fold_left (fun out m -> List.rev_append (ls_of m) out) [] mty_dif) in
   Printf.printf "LIT NUL :\n";
   List.iter (fun l -> Printf.printf "{\n%s\n}\n" (Lit.show l)) lit_nul;
-  let sub_dumb = List.fold_left (fun out va -> StrMap.add va (Lit.Lit 1) out) StrMap.empty fv_lit in
-  let lit_nul = List.map (Lit.apply sub_dumb) lit_nul in
+  let sub_dumb = List.fold_left (fun out va -> StrMap.add va (Lit.Lit 7) out) StrMap.empty fv_lit in
+  let lit_nul = List.map (fun l -> Lit.canonic (Lit.apply sub_dumb l)) lit_nul in
   Printf.printf "LIT NUl INST :\n";
   List.iter (fun l -> Printf.printf "{\n%s\n}\n" (Lit.show l)) lit_nul;
-  let sol =
-    List.fold_left
-      (fun out oi ->
-        match oi with
-        | None -> out
-        | Some i -> i::out)
-      [] (List.map Lit.resolve_0 lit_nul)
-  in
-  Printf.printf "SOL :\n";
-  List.iter (fun (x, i) -> Printf.printf "{%s = %d}\n" x i) sol;
-  let sol_sub =
-    List.fold_left
-      (fun out (x, i) ->
-        if not (StrMap.mem x out) || (StrMap.find x out = Lit.Lit i) then
-          StrMap.add x (Lit.Lit i) out
-        else
-          raise (S.Ls_Infer_Error ""))
-      StrMap.empty sol
-  in
-  let mty_out = apply false sol_sub mty_out in
+  let sol = resolve lit_nul in
+  Printf.printf "SOL :\n%s\n" (strmap_str sol Lit.show);
+  let mty_out = apply false sol mty_out in
+  Printf.printf "MTY OUT :\n%s\n\n" (S.show_rcaml_type mty_out);
+(*  assert false;*)
   mty_arg_l, mty_out
 
 let rec process_t t env =
@@ -305,7 +351,21 @@ let rec process_t t env =
       | _ -> S.get_type t_cons'
     in
     mk (S.MatchList (l, t_nil', x, xs, t_cons')) (merge mty_match)
-  | S.MatchTree (t, t_leaf, x, tl, tr, t_node) -> assert false
+  | S.MatchTree (t, t_leaf, x, tl, tr, t_node) ->
+    let S.TTree (lsn, lsd, mty_x, r) = StrMap.find t env in
+    let t_leaf' = process_t t_leaf env in
+    let env =
+      StrMap.add x mty_x
+        (StrMap.add tl (S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r))
+          (StrMap.add tr (S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r)) env))
+    in
+    let t_node' = process_t t_node env in
+    let mty_match =
+      match lsn with
+      | Lit.Lit i -> if i = 0 then S.get_type t_leaf' else S.get_type t_node'
+      | _ -> S.get_type t_node'
+    in
+    mk (S.MatchTree (t, t_leaf', x, tl, tr, t_node')) (merge mty_match)
   | S.Let (x, t1, t2) ->
     let t1' = process_t t1 env in
     let env = StrMap.add x (S.get_type t1') env in
@@ -349,8 +409,25 @@ let rec process_t t env =
     let S.TList (ls, _, _) = S.get_type t2' in
     let S.THnd r = S.get_type t3' in
     mk (S.Cons (t1', t2', t3')) (merge (S.TList (Lit.Add [ls ; Lit.Lit 1], mty1, r)))
-  | S.Leaf -> assert false
-  | S.Node (t1, t2, t3, t4) -> assert false
+  | S.Leaf ->
+    let S.TTree (_, _, mty1, r) = mty in
+    mk S.Leaf (merge (S.TTree (Lit.Lit 0, Lit.Lit 0, mty1, r)))
+  | S.Node (t1, t2, t3, t4) -> begin
+    let t1' = process_t t1 env in
+    let t2' = process_t t2 env in
+    let t3' = process_t t3 env in
+    let t4' = process_t t4 env in
+    let mty1 = S.get_type t1' in
+    let S.TTree (lsn1, lsd1, _, _) = S.get_type t2' in
+    let S.TTree (lsn2, lsd2, _, _) = S.get_type t3' in
+    let S.THnd r = S.get_type t4' in
+    match lsd1, lsd2 with
+    | Lit.Lit h1, Lit.Lit h2 ->
+      let h = max h1 h2 in
+      mk (S.Node (t1', t2', t3', t4')) (merge (S.TTree (Lit.Add [lsn1 ; lsn2 ; Lit.Lit 1], Lit.Add [Lit.Lit h ; Lit.Lit 1], mty1, r)))
+    | _ ->
+      mk (S.Node (t1', t2', t3', t4')) (merge (S.TTree (Lit.Add [lsn1 ; lsn2 ; Lit.Lit 1], Lit.Add [lsd1 ; Lit.Lit 1], mty1, r)))
+  end
   | S.Ref (t1, t2) -> assert false
   | S.Assign (t1, t2) -> assert false
   | S.Deref t1 -> assert false

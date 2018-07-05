@@ -32,7 +32,10 @@ let mk_rgn = let cpt = ref (-1) in fun () -> incr cpt;
 let strmap_diff m1 m2 = StrMap.filter (fun k v -> StrMap.mem k m2) m1
 
 let iter_fun f x eq =
-  let rec loop x old = if eq x old then x else loop (f x) x in
+  let rec loop x old =
+    let e = eq x old in
+(*    Printf.printf "E ============== %b\n\n\n" e ;*)
+    if e then x else loop (f x) x in
   loop (f x) x
 
 let hash_s s =
