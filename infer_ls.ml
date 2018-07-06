@@ -23,6 +23,16 @@ let rec minus_mty mty mty' =
   | S.TAlpha a, _ -> mty'
   | _ -> mty
 
+let rec op_mty f mty mty' =
+  match mty, mty' with
+  | S.TFun (mty_l, mty2, r), S.TFun (mty_l', mty2', _) -> S.TFun (List.map2 (op_mty f) mty_l mty_l', op_mty f mty2 mty2', r)
+  | S.TCouple (mty1, mty2, r), S.TCouple (mty1', mty2', _) -> S.TCouple (op_mty f mty1 mty1', op_mty f mty2 mty2', r)
+  | S.TList (ls, mty1, r), S.TList (ls', mty1', _) -> S.TList (f ls ls', op_mty f mty1 mty1', r)
+  | S.TTree (lsn, lsd, mty1, r), S.TTree (lsn', lsd', mty1', _) -> S.TTree (f lsn lsn', f lsd lsd', op_mty f mty1 mty1', r)
+  | S.TRef (id, mty1, r), S.TRef (_, mty1', _) -> S.TRef (id, op_mty f mty1 mty1', r)
+  | S.TAlpha a, _ -> mty'
+  | _ -> mty
+
 let add_i_to_sub x i s =
   if not (StrMap.mem x s) || (StrMap.find x s = Lit.Lit i) then
     StrMap.add x (Lit.Lit i) s
@@ -81,11 +91,15 @@ let apply once sub mty =
     | _ -> mty
   in loop mty
 
-let instanciate mty l_lit =
+let instanciate mty l_lit const =
   let new_lit () =
     match l_lit with
     | [] -> Lit.Var (mk_var ())
-    | _ -> Lit.Add (List.fold_left (fun out lit -> (Lit.Mul [Lit.Var lit ; Lit.Var (mk_var ())])::out) [] l_lit)
+    | _ ->
+      if const then
+        Lit.Add ((Lit.Var (mk_var ()))::(List.fold_left (fun out lit -> (Lit.Mul [Lit.Var lit ; Lit.Var (mk_var ())])::out) [] l_lit))
+      else
+        Lit.Add (List.fold_left (fun out lit -> (Lit.Mul [Lit.Var lit ; Lit.Var (mk_var ())])::out) [] l_lit)
   in
   let rec loop mty =
     match mty with
@@ -118,7 +132,7 @@ let resolve lit_nul =
       loop (List.map (fun l -> Lit.canonic (Lit.apply out_sol l)) out_lit) out_sol
   in loop lit_nul StrMap.empty
 
-let rec infer f arg_l f_mty env t =
+let rec infer f arg_l f_mty env inf_const t =
   print_newline ();
   let te = S.get_term t in
   let mty = S.get_type t in
@@ -137,7 +151,7 @@ let rec infer f arg_l f_mty env t =
     | S.Neg t1 -> [StrMap.empty, mty]
     | S.Comp (op, t1, t2) -> [StrMap.empty, mty]
     | S.Fun (s, arg_l, t1, t2, _) ->
-      let mty_arg, mty_out = infer s arg_l mty env t1 in
+      let mty_arg, mty_out = infer s arg_l mty env false t1 in
       let S.THnd r = S.get_type t2 in
       [StrMap.empty, S.TFun (mty_arg, mty_out, r)]
     | S.App (t1, arg_l) ->
@@ -152,7 +166,16 @@ let rec infer f arg_l f_mty env t =
     | S.If (t1, t2, t3) ->
       let mty2 = infer_t env t2 in
       let mty3 = infer_t env t3 in
-      mty3
+(*      let mty_out =
+        List.fold_left
+          (fun out (s2, m2) ->
+            List.fold_left
+              (fun out (s3, m3) -> (sub_union s2 s3, (op_mty Lit.add m2 m3))::out)
+              out mty3)
+          [] mty2
+      in
+      mty_out*)
+      List.rev_append mty2 mty3
     | S.MatchList (l, t_nil, x, xs, t_cons) ->
       let S.TList (l_ls, mty_x, r) = StrMap.find l env in
       let mty_nil = infer_t env t_nil in
@@ -259,8 +282,27 @@ let rec infer f arg_l f_mty env t =
           [] mty1
       in
       mty_out
-    | S.Leaf -> assert false
-    | S.Node (t1, t2, t3, t4) -> assert false
+    | S.Leaf ->
+      let S.TTree (_, _, mty1, r) = mty in
+      [StrMap.empty, S.TTree (Lit.Lit 0, Lit.Lit 0, mty1, r)]
+    | S.Node (t1, t2, t3, t4) ->
+      let mty1 = infer_t env t1 in
+      let mty2 = infer_t env t2 in
+      let mty3 = infer_t env t3 in
+      let S.THnd r = S.get_type t4 in
+      let mty_out =
+        List.fold_left
+          (fun out (s1, m1) -> List.fold_left
+            (fun out (s2, m2) -> List.fold_left
+              (fun out (s3, m3) ->
+                let S.TTree (lsn, lsd, _, _) = m2 in
+                let S.TTree (lsn', lsd', _, _) = m3 in
+                (sub_union s1 (sub_union s2 s3), S.TTree (Lit.Add [lsn ; lsn' ; Lit.Lit 1], Lit.Add [lsd ; Lit.Lit 1],m1, r))::out)
+              out mty3)
+            out mty2)
+          [] mty1
+      in
+      mty_out
     | S.Ref (t1, t2) -> assert false
     | S.Assign (t1, t2) -> assert false
     | S.Deref t1 -> assert false
@@ -274,9 +316,9 @@ let rec infer f arg_l f_mty env t =
     | _ -> [StrMap.empty, mty]
   in
   let S.TFun (mty_arg_l, mty_out, r) = f_mty in
-  let mty_arg_l = List.map (fun m -> instanciate m []) mty_arg_l in
+  let mty_arg_l = List.map (fun m -> instanciate m [] false) mty_arg_l in
   let fv_lit = StrSet.elements (List.fold_left (fun out m -> StrSet.union (fv m) out) StrSet.empty mty_arg_l) in
-  let mty_out = instanciate mty_out fv_lit in
+  let mty_out = instanciate mty_out fv_lit inf_const in
   let env =
     List.fold_left2
       (fun out arg mty_arg -> StrMap.add arg mty_arg out)
@@ -297,12 +339,20 @@ let rec infer f arg_l f_mty env t =
   let lit_nul = List.map (fun l -> Lit.canonic (Lit.apply sub_dumb l)) lit_nul in
   Printf.printf "LIT NUl INST :\n";
   List.iter (fun l -> Printf.printf "{\n%s\n}\n" (Lit.show l)) lit_nul;
-  let sol = resolve lit_nul in
-  Printf.printf "SOL :\n%s\n" (strmap_str sol Lit.show);
-  let mty_out = apply false sol mty_out in
-  Printf.printf "MTY OUT :\n%s\n\n" (S.show_rcaml_type mty_out);
-(*  assert false;*)
-  mty_arg_l, mty_out
+  if inf_const then begin
+    let sol = resolve lit_nul in
+    Printf.printf "SOL :\n%s\n" (strmap_str sol Lit.show);
+    let mty_out = apply false sol mty_out in
+    Printf.printf "MTY OUT :\n%s\n\n" (S.show_rcaml_type mty_out);
+(*    assert false;*)
+    mty_arg_l, mty_out
+  end else try
+    let sol = resolve lit_nul in
+    Printf.printf "SOL :\n%s\n" (strmap_str sol Lit.show);
+    let mty_out = apply false sol mty_out in
+    Printf.printf "MTY OUT :\n%s\n\n" (S.show_rcaml_type mty_out);
+    mty_arg_l, mty_out
+  with Lit.Bad_equation -> infer f arg_l f_mty env true t
 
 let rec process_t t env =
   Printf.printf "--------- LS PROCCES ------------\n%s\n\n" (S.show_typed_term t);
@@ -320,7 +370,7 @@ let rec process_t t env =
   | S.Comp (op, t1, t2) -> mk (S.Comp (op, process_t t1 env, process_t t2 env)) mty
   | S.Fun (s, arg_l, t1, t2, f_pot_l) ->
     let S.TFun (_, _, r) = mty in
-    let mty_arg, mty_out = infer s arg_l mty env t1 in
+    let mty_arg, mty_out = infer s arg_l mty env false t1 in
     let mty' = S.TFun (mty_arg, mty_out, r) in
     let env = List.fold_left2 (fun out a m -> StrMap.add a m out) (StrMap.add s mty' env) arg_l mty_arg in
     mk (S.Fun (s, arg_l, process_t t1 env, process_t t2 env, f_pot_l)) (merge mty')

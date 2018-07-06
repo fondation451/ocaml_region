@@ -14,7 +14,7 @@ let strset_str strset =
   "[" ^ (StrSet.fold (fun a out -> out ^ (Printf.sprintf "%s, " a)) strset "") ^ "]"
 
 let strmap_str strmap val_str =
-  "[" ^ (StrMap.fold (fun a v out -> out ^ (Printf.sprintf "%s : %s, " a (val_str v))) strmap "") ^ "]"
+  "[" ^ (StrMap.fold (fun a v out -> out ^ (Printf.sprintf "%s : %s, \n" a (val_str v))) strmap "") ^ "]"
 
 let mk_id = let cpt = ref (-1) in fun () -> incr cpt; !cpt
 

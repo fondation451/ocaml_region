@@ -80,16 +80,23 @@ let simplify lit =
   let rec loop = function
     | Add [] -> Lit 0
     | Mul [] -> Lit 1
-    | Add l | Mul l when List.tl l = [] -> List.hd l
+    | Add [l] | Mul [l] -> l
     | Add l_l ->
-      let l_l' = List.filter (fun l -> l <> Unit && l <> Lit 0) (List.map loop l_l) in
-      let rl_l, l_l' = List.partition (fun l -> match l with RShift _ -> true | _ -> false) l_l' in
-      let rl_l' = List.map (fun (RShift rl) -> rl) rl_l in
-      if rl_l' <> [] then
-        let l_l' = List.map (fun l -> Mul [l ; Lit 2]) l_l' in
-        loop (RShift (Add (List.rev_append rl_l' l_l')))
+      let l_l' = List.filter (fun l -> l <> Unit) (List.map loop l_l) in
+      if l_l' <> l_l then
+(*        (Printf.printf "Aqui delante %s %s!!!\n\n"
+        (List.fold_left (fun out l -> out ^ ", " ^ (show l)) "" l_l')
+        (List.fold_left (fun out l -> out ^ ", " ^ (show l)) "" l_l) ;*)
+        loop (Add l_l')
       else
-        Add l_l'
+        let l_l' = List.filter (fun l -> l <> Lit 0) (List.map loop l_l) in
+        let rl_l, l_l' = List.partition (fun l -> match l with RShift _ -> true | _ -> false) l_l' in
+        let rl_l' = List.map (fun (RShift rl) -> rl) rl_l in
+        if rl_l' <> [] then
+          let l_l' = List.map (fun l -> Mul [l ; Lit 2]) l_l' in
+          loop (RShift (Add (List.rev_append rl_l' l_l')))
+        else
+          Add l_l'
     | Mul l_l ->
       if List.mem (Lit 0) l_l then
         Lit 0
@@ -156,7 +163,7 @@ let agg lit =
     | RShift l -> RShift (loop l)
     | _ as out -> out
   in
-  let out = loop lit in
+  let out = loop (simplify lit) in
 (*  Printf.printf "agg loop %s\n" (show out);*)
   simplify out
 
@@ -291,3 +298,14 @@ let from_int i = Lit i
 let add l l' = canonic (Add [l ; l'])
 let sub l l' = canonic (Add [l ; Mul [Lit (-1) ; l']])
 let mul l l' = canonic (Mul [l ; l'])
+
+(*
+let rec max l l' =
+  match l, l' with
+  | Var of string
+  | Lit i, Lit i' -> Lit (Pervasives.max i i')
+  | Add of t list
+  | Mul of t list
+  | RShift ll, RShift ll' -> RShift (max ll ll')
+  | Unit, (_ as out) | (_ as out), Unit -> out
+*)

@@ -44,7 +44,7 @@ let () =
     let prog = Ast_to_type.process prog in
     Printf.printf "(********** RCAML TYPED **********)\n%s\n\n" (Ast.show_typed_term prog);
 
-    let prog = Type_to_ls_bis.process prog in
+    let prog = Infer_ls.process prog in
     Printf.printf "(********** RCAML LS **********)\n%s\n\n" (Ast.show_typed_term prog);
 
     let prog = Ls_to_simpl.process prog in
@@ -52,6 +52,8 @@ let () =
 
     let prog = Verify_annot.process prog in
     Printf.printf "(********** RCAML VERIFY **********)\n%s\n\n" (Simpl.show_typed_term prog);
+
+(*    assert false;*)
 
     let prog = Simpl_to_check.process prog in
     Printf.printf "(********** RCAML CHECKED **********)\n%s\n\n" (Check.show_typed_term prog);
