@@ -165,7 +165,10 @@ let rec verify_t env t s_pot_l out =
           (s, out_p) pot_l)
       out
   | S.If (t1, t2, t3) ->
-  verify_t env t3 s_pot_l (verify_t env t2 s_pot_l (verify_t env t1 s_pot_l out))
+    let out_t1 = verify_t env t1 s_pot_l out in
+    let out_t2 = verify_t env t2 s_pot_l out_t1 in
+    let out_t3 = verify_t env t3 s_pot_l out_t1 in
+    List.rev_append out_t2 out_t3
   | S.MatchList (l, t_nil, x, xs, t_cons) ->
     let out_nil = verify_t env t_nil s_pot_l out in
     let S.TList (ls, mty_x, r) = Printf.printf "DEBUG AQUI !!!!\n\n";StrMap.find l env in

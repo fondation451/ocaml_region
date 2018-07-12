@@ -314,8 +314,8 @@ let rec check_term env g c t =
   let a_l = S.get_alpha_l t in
   let r_l = S.get_rgn_l t in
 
-  (* print_cap c "c";
-  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t); *)
+   print_cap c "c";
+  Printf.printf "--------- CHECK PROCCES ------------\n%s\n\n" (S.show_typed_term t); 
   (* let te = S.get_term t in
   let S.TPoly(a_l, r_l, ty) = S.get_type t in *)
   let g' = List.fold_left (fun out r -> T.gamma_add r out) g r_l in
@@ -325,13 +325,18 @@ let rec check_term env g c t =
     |S.Bool(b), S.TBool -> T.Bool(b), T.TBool, g, c, T.empty_effects
     |S.Int(i), S.TInt -> T.Int(i), T.TInt, g, c, T.empty_effects
     |S.Var(v), _ -> begin
-(*      Printf.printf "CHECKING OF %s\n\n" (S.show_typed_term t);
+      Printf.printf "CHECKING OF %s\n\n" (S.show_typed_term t);
       StrMap.iter
         (fun x mty_x -> Printf.printf "  %s : %s\n" x (T.show_rcaml_type mty_x))
         env;
       print_cap c "VAR__c";
-      print_gamma g "VAR__g"; *)
-      let mty' = try StrMap.find v env with Not_found -> lift_type mty in
+      print_gamma g "VAR__g"; 
+(*      let mty' = try StrMap.find v env with Not_found -> lift_type mty in*)
+      let mty' =
+        match mty with
+        | S.TFun (_, _, _) -> (try StrMap.find v env with Not_found -> lift_type mty)
+        | _ -> lift_type mty
+      in
 (*      Printf.printf "TYPE %s\n\n\n" (T.show_rcaml_type mty'); *)
       match mty' with
       |T.THnd(r) |T.TFun(_, _, _, r, _, _, _) |T.TCouple(_, _, r) |T.TList(_, _, r) |T.TRef(_, _, r) ->
