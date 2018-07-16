@@ -153,6 +153,7 @@ pot_term:
   |DEPTH LPAR v = IDENT RPAR { PDepth(v) }
   |i = INTEGER { PLit(i) }
   |p1 = pot_term PLUS p2 = pot_term { PAdd(p1, p2) }
+  |p1 = pot_term MINUS p2 = pot_term { PAdd(p1, PMin p2) }
   |p1 = pot_term TIMES p2 = pot_term { PMul(p1, p2) }
   |MINUS p1 = pot_term { PMin(p1) }
   |LPAR p1 = pot_term RPAR { p1 }

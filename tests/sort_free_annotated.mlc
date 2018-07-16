@@ -1,0 +1,57 @@
+(*
+  Nicolas ASSOUAD
+
+  Test function for memory consumption analysis
+  Sort with free of memory
+
+*)
+
+let rgn0 = newrgn () in
+let rgn1 = newrgn () in
+begin
+  aliasrgn rgn0 in
+  aliasrgn rgn1 in
+
+  let rec extract_max l out_l out r =
+    { r: _length(l) * rcons + rpair -> 0 }
+    match l with
+    | Nil -> (out_l, out) @ r
+    | Cons x xs -> (
+      if x > out then
+        extract_max xs (Cons out out_l @ r) x r
+      else
+        extract_max xs (Cons x out_l @ r) out r
+    )
+  @
+    rgn1
+  in
+
+  let rec sort l out r_work r_out =
+    {
+      r_work: (_length(l) * rpair) + (_length(l) * _length(l) * rcons) -> 0;
+      r_out: _length(l) * rcons -> 0
+    }
+    match l with
+    | Nil -> out
+    | Cons x xs -> (
+      let tmp = extract_max xs Nil x r_work in
+      let l' = fst tmp in
+      let m = snd tmp in
+      sort l' (Cons m out @ r_out) r_work r_out
+    )
+  @
+    rgn1
+  in
+
+  let l1 = [1 ; 3 ; 0 ; 2] @ rgn0 in
+
+  begin
+    let rgnw = newrgn () in (
+    (aliasrgn rgnw in let l1' = sort l1 Nil rgnw rgn0 in ());
+    (freergn rgnw);
+    let rgnw = newrgn () in (
+    (aliasrgn rgnw in let l1'' = sort l1 Nil rgnw rgn0 in ());
+    (freergn rgnw);
+    ()))
+  end
+end

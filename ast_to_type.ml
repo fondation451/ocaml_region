@@ -220,7 +220,7 @@ let rec type_infer env t =
   match te with
   | S.Var var -> begin
     try
-(*Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env S.show_rcaml_type_poly);*)
+Printf.printf "@@@@@@@@@@ VAR %s ENV\n%s\n\n" var (strmap_str env S.show_typed_term);
       let t' = instanciate (StrMap.find var env) in
       subs_empty, generalize env (S.get_term t') (S.get_type t')
       (* S.mk_term (S.Var(var)) (generalize env (instanciate (StrMap.find var env))) *)
