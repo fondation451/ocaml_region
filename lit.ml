@@ -13,6 +13,13 @@ type t =
   | Unit
 [@@deriving show { with_path = false }]
 
+let rec is_in v = function
+  | Var v' -> v = v'
+  | Add l_l -> List.exists (is_in v) l_l
+  | Mul l_l -> List.exists (is_in v) l_l
+  | RShift l' -> is_in v l'
+  | _ -> false
+
 let rec equal l l' =
   match l, l' with
   | Var v, Var v' -> v = v'
@@ -270,9 +277,10 @@ let positive = function
   | Lit i -> i >= 0
   | _ -> assert false
 
-let resolve_0 lit =
+let resolve_0 lit var =
   let rec loop l old out =
-    if l = old then
+(*    Printf.printf "%s\n?=\n%s\nAVEC out = %d\n\n" (show l) (show old) out;*)
+    if equal l old then
       None
     else
     match l with
@@ -289,10 +297,14 @@ let resolve_0 lit =
     | Mul l_l ->
       let i_l, l_l' = separate l_l in
       let i = List.fold_left (fun out i -> i * out) 1 i_l in
-      loop (canonic (Mul l_l')) l (out / i)
+      if out = 0 then
+        let (l_var, l_l') = List.partition (fun l -> List.exists (fun v -> is_in v l) var) l_l' in
+        loop (canonic (Mul l_l')) l out
+      else
+        loop (canonic (Mul l_l')) l (out / i)
     | RShift l -> loop l lit (2*out)
     | Unit -> raise Bad_equation
-  in loop lit Unit 0
+  in loop (canonic lit) Unit 0
 
 let from_int i = Lit i
 let add l l' = canonic (Add [l ; l'])

@@ -46,6 +46,7 @@ let () =
 
     let prog = Infer_ls.process prog in
     Printf.printf "(********** RCAML LS **********)\n%s\n\n" (Ast.show_typed_term prog);
+(*    assert false;*)
 
     let prog = Ls_to_simpl.process prog in
     Printf.printf "(********** RCAML SIMPL **********)\n%s\n\n" (Simpl.show_typed_term prog);

@@ -92,7 +92,7 @@ let apply once sub mty =
   in loop mty
 
 let instanciate mty l_lit const =
-  let new_lit () =
+  let new_lit () = Lit.canonic (
     match l_lit with
     | [] -> Lit.Var (mk_var ())
     | _ ->
@@ -100,6 +100,7 @@ let instanciate mty l_lit const =
         Lit.Add ((Lit.Var (mk_var ()))::(List.fold_left (fun out lit -> (Lit.Mul [Lit.Var lit ; Lit.Var (mk_var ())])::out) [] l_lit))
       else
         Lit.Add (List.fold_left (fun out lit -> (Lit.Mul [Lit.Var lit ; Lit.Var (mk_var ())])::out) [] l_lit)
+  )
   in
   let rec loop mty =
     match mty with
@@ -113,7 +114,7 @@ let instanciate mty l_lit const =
 
 let sub_union s1 s2 = StrMap.union (fun _ l1 l2 -> Some l1) s1 s2
 
-let resolve lit_nul =
+let resolve lit_nul pass var =
   let rec loop lit_nul sol =
   Printf.printf "RESOlVE CURRENT LIT NUl :\n";
   List.iter (fun l -> Printf.printf "{\n%s\n}\n" (Lit.show l)) lit_nul;
@@ -121,9 +122,11 @@ let resolve lit_nul =
     let out_sol, out_lit =
       List.fold_left
         (fun (out_sol, out_lit) l ->
-          match Lit.resolve_0 l with
-          | None -> out_sol, l::out_lit
-          | Some (x, i) -> add_i_to_sub x i out_sol, out_lit)
+          try begin
+            match Lit.resolve_0 l var with
+            | None -> out_sol, l::out_lit
+            | Some (x, i) -> add_i_to_sub x i out_sol, out_lit
+          end with Lit.Bad_equation -> if pass then out_sol, l::out_lit else raise Lit.Bad_equation)
         (sol, []) lit_nul
     in
     if out_lit = [] || List.length out_lit = List.length lit_nul then
@@ -297,7 +300,10 @@ let rec infer f arg_l f_mty env inf_const t =
               (fun out (s3, m3) ->
                 let S.TTree (lsn, lsd, _, _) = m2 in
                 let S.TTree (lsn', lsd', _, _) = m3 in
-                (sub_union s1 (sub_union s2 s3), S.TTree (Lit.Add [lsn ; lsn' ; Lit.Lit 1], Lit.Add [lsd ; Lit.Lit 1],m1, r))::out)
+                let s = sub_union s1 (sub_union s2 s3) in
+                (s, S.TTree (Lit.Add [lsn ; lsn' ; Lit.Lit 1], Lit.Add [lsd ; Lit.Lit 1],m1, r))::
+                (s, S.TTree (Lit.Add [lsn ; lsn' ; Lit.Lit 1], Lit.Add [lsd' ; Lit.Lit 1],m1, r))::
+                out)
               out mty3)
             out mty2)
           [] mty1
@@ -340,17 +346,19 @@ let rec infer f arg_l f_mty env inf_const t =
   Printf.printf "LIT NUl INST :\n";
   List.iter (fun l -> Printf.printf "{\n%s\n}\n" (Lit.show l)) lit_nul;
   if inf_const then begin
-    let sol = resolve lit_nul in
+    let sol = resolve lit_nul true fv_lit in
     Printf.printf "SOL :\n%s\n" (strmap_str sol Lit.show);
     let mty_out = apply false sol mty_out in
     Printf.printf "MTY OUT :\n%s\n\n" (S.show_rcaml_type mty_out);
-(*    assert false;*)
+    if f = "insert_tree" then assert false;
+    if f = "to_tree" then assert false;
     mty_arg_l, mty_out
   end else try
-    let sol = resolve lit_nul in
+    let sol = resolve lit_nul false fv_lit in
     Printf.printf "SOL :\n%s\n" (strmap_str sol Lit.show);
     let mty_out = apply false sol mty_out in
     Printf.printf "MTY OUT :\n%s\n\n" (S.show_rcaml_type mty_out);
+    if f = "to_tree" then assert false;
     mty_arg_l, mty_out
   with Lit.Bad_equation -> infer f arg_l f_mty env true t
 

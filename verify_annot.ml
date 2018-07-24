@@ -25,45 +25,6 @@ let apply env lit_l = StrMap.map (Lit.apply env) lit_l
 let canonic_form env lit_l = StrMap.map (Lit.canonic_form env) lit_l
 let canonic lit_l = StrMap.map (Lit.canonic) lit_l
 
-let rec pot_of env t =
-  match S.get_term t with
-  | S.Var v -> begin
-    env, try StrMap.find v env with Not_found -> Lit.Var v
-  end
-  | S.Letrec (v, t1, t2) | S.Let (v, t1, t2) ->
-    let env, pot_t1 = pot_of env t1 in
-    pot_of (StrMap.add v pot_t1 env) t2
-  | S.MatchList (var_match, t_nil, x, xs, t_cons) ->
-    let env, pot_t_nil = pot_of env t_nil in
-    let env' = StrMap.add x Lit.Unit (StrMap.add xs (Lit.Add [Lit.Var var_match ; Lit.Lit (-1)]) env) in
-    pot_of env' t_cons
-  | S.MatchTree (var_match, t_leaf, x, tl, tr, t_node) ->
-    Printf.printf "AQUI\n";
-    let env, pot_t_leaf = pot_of env t_leaf in
-    let env' = StrMap.add x Lit.Unit (StrMap.add var_match (Lit.Add [Lit.Var tl ; Lit.Var tr ; Lit.Lit 1]) env) in
-    pot_of env' t_node
-  | S.Pair (t1, t2, t3) -> pot_of env t1
-  | S.Fst t1 -> pot_of env t1
-  | S.Snd t1 -> pot_of env t1
-  | S.Hd t1 -> pot_of env t1
-  | S.Tl t1 ->
-    let env, pot_t1 = pot_of env t1 in
-    env, Lit.Add [pot_t1 ; Lit.Lit (-1)]
-  | S.Nil -> env, Lit.Lit 0
-  | S.Cons (t1, t2, t3) ->
-    let env, pot_t2 = pot_of env t2 in
-    env, Lit.Add[pot_t2 ; Lit.Lit 1]
-  | S.Leaf -> env, Lit.Lit 0
-  | S.Node (t1, t2, t3, t4) -> pot_of env t1
-  | S.Ref (t1, t2) -> pot_of env t1
-  | S.Assign (t1, t2) -> pot_of env t1
-  | S.Deref t1 -> pot_of env t1
-  | S.Newrgn -> env, Lit.Unit
-  | S.Aliasrgn (t1, t2) -> pot_of env t1
-  | S.Freergn t1 -> pot_of env t1
-  | S.Sequence (t1, t2) -> pot_of env t1
-  | _ -> env, Lit.Unit
-
 let rec instanciate pot arg_l env =
   let type_of i = StrMap.find (List.nth arg_l i) env in
   match pot with
