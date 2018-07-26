@@ -1,4 +1,4 @@
-SHELL      := bash
+_SHELL      := bash
 TARGET     := main.native
 SQUALLC    := rcaml
 OCAMLBUILD :=\

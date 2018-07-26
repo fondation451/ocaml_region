@@ -5,3 +5,6 @@ rcaml
 
 # VIM files
 *.swp
+
+# Library
+ocaxima/
