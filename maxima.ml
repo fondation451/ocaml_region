@@ -21,6 +21,10 @@ let max_solve l c =
   let eq = to_maxima l in
   "solve(" ^ eq ^ "," ^ c ^ ")"
 
+let max_canonic l =
+  let eq = to_maxima l in
+  "expand(" ^ eq ^ ")"
+
 let mk_maxima_cmd cmd = "maxima --very-quiet -qr \"display2d:false$ " ^ cmd ^ ";\""
 
 let syscall cmd =
@@ -47,10 +51,10 @@ let to_lit s =
 let min_sol l_l = List.hd l_l(*list_min (fun l l' -> compare (cost_of l) (cost_of l')) l_l*)
 
 let canonic l =
-  let e = to_maxima l in
-  let out = execute e in
+  let cmd = max_canonic l in
+  let out = execute cmd in
   let out' = to_lit out in
-  Printf.printf "%s\n%s\n%s\n" e out (list_str out' Lit.show); print_newline ();
+  Printf.printf "%s\n%s\n%s\n" cmd out (list_str out' Lit.show); print_newline ();
   min_sol out'
 
 

@@ -6,11 +6,11 @@ let rgn_of r = r
 
 let show_out out =
   StrMap.fold (fun k pot out -> Printf.sprintf "%s%s : %s\n" out k (Lit.show pot)) out ""
-
+(*
 let rec remove_p = function
-  | Lit.Var _ -> Lit.Lit 1000
-  | Lit.Add p_l -> Lit.Add (List.map remove_p p_l)
-  | Lit.Mul p_l -> Lit.Mul (List.map remove_p p_l)
+  | Lit.Var _ -> Lit.lit 1000
+  | Lit.Add (l1, l2) -> Lit.add (remove_p l1) (remove_p l2)
+  | Lit.Mul (l1, l2) -> Lit.mul (List.map remove_p p_l)
   | Lit.RShift l -> Lit.RShift (remove_p l)
   | _ as unchanged -> unchanged
 
@@ -24,12 +24,27 @@ let factorize lit_l = StrMap.map Lit.factorize lit_l
 let apply env lit_l = StrMap.map (Lit.apply env) lit_l
 let canonic_form env lit_l = StrMap.map (Lit.canonic_form env) lit_l
 let canonic lit_l = StrMap.map (Lit.canonic) lit_l
+*)
+let rec remove_p i = function
+  | Lit.Var _ -> Lit.lit i
+  | Lit.Add (l1, l2) -> Lit.add (remove_p i l1) (remove_p i l2)
+  | Lit.Mul (l1, l2) -> Lit.mul (remove_p i l1) (remove_p i l2)
+  | Lit.Div (l1, l2) -> Lit.div (remove_p i l1) (remove_p i l2)
+  | _ as unchanged -> unchanged
+
+let canonic_form env lit_l = StrMap.map (fun l -> Maxima.canonic (Lit.apply env l)) lit_l
+let canonic lit_l = StrMap.map (Maxima.canonic) lit_l
+
+let positive lit_l =
+  (StrMap.for_all (fun _ l -> Lit.positive (Maxima.canonic (remove_p 0 l))) lit_l)
+  &&
+  (StrMap.for_all (fun _ l -> Lit.positive (Maxima.canonic (remove_p 100000000 l))) lit_l)
 
 let rec instanciate pot arg_l env =
   let type_of i = StrMap.find (List.nth arg_l i) env in
   match pot with
-  | S.PPot id -> Lit.Var id
-  | S.PLit i ->  Lit.Lit i
+  | S.PPot id -> Lit.var id
+  | S.PLit i ->  Lit.lit i
   | S.PSize i -> begin
     match type_of i with
     | S.TList (ls, _, _) | S.TTree (ls, _, _, _) -> ls
@@ -50,15 +65,15 @@ let rec instanciate pot arg_l env =
     | S.TTree (_, lsd, _, _) -> lsd
     | _ -> assert false
   end
-  | S.PAdd (p1, p2) -> Lit.Add [instanciate p1 arg_l env ; instanciate p2 arg_l env]
-  | S.PMin p1 -> Lit.Mul [Lit.Lit (-1) ; instanciate p1 arg_l env]
-  | S.PMul (p1, p2) -> Lit.Mul [instanciate p1 arg_l env ; instanciate p2 arg_l env]
-  | S.PUnit -> Lit.Unit
+  | S.PAdd (p1, p2) -> Lit.add (instanciate p1 arg_l env) (instanciate p2 arg_l env)
+  | S.PMin p1 -> Lit.mul (Lit.lit (-1)) (instanciate p1 arg_l env)
+  | S.PMul (p1, p2) -> Lit.mul (instanciate p1 arg_l env) (instanciate p2 arg_l env)
+  | S.PUnit -> assert false(*Lit.Unit*)
 
 let add_to_env x mty env =
   let add_ls x = function
-    | Lit.Lit i -> StrMap.add x (Lit.Lit i) env
-    | _ -> StrMap.add x (Lit.Var (mk_var ())) env
+    | Lit.Lit i -> StrMap.add x (Lit.lit i) env
+    | _ -> StrMap.add x (Lit.var (mk_var ())) env
   in
   match mty with
   | S.TList (ls, mty1, r) -> add_ls x ls
@@ -82,8 +97,10 @@ let substitute_r f_mty_arg_l mty_arg_l pot_l =
     (List.fold_left
       (fun out (r, (pot1, pot2)) ->
         let r = try StrMap.find r s with Not_found -> r in
-        let (pot1', pot2') = try StrMap.find r out with Not_found -> S.PUnit, S.PUnit in
-        StrMap.add r (S.PAdd (pot1, pot1'), S.PAdd (pot2, pot2')) out)
+        try
+          let (pot1', pot2') = StrMap.find r out in
+          StrMap.add r (S.PAdd (pot1, pot1'), S.PAdd (pot2, pot2')) out
+        with Not_found -> StrMap.add r (pot1, pot2) out)
       StrMap.empty pot_l)
 
 let rec verify_t env t s_pot_l out =
@@ -111,18 +128,19 @@ let rec verify_t env t s_pot_l out =
       | S.Var v ->
         let S.TFun (mty_arg_l, _, _) = S.get_type t1 in
         let f_mty_arg_l, pot_l = Printf.printf "@@@@@@@@@@@@ %s\n\n" v ;StrMap.find v s_pot_l in
+    Printf.printf "%s\n" (S.show_fun_pot_desc pot_l);
         substitute_r f_mty_arg_l mty_arg_l pot_l
       | S.Fun (_, arg_l, _, _, Some(pot_l)) -> pot_l
       | _ -> assert false
     in
-    (*Printf.printf "%s\n" (S.show_fun_pot_desc pot_l);*)
+    Printf.printf "%s\n" (S.show_fun_pot_desc pot_l);
     let out = verify_t env t1 s_pot_l out in
     List.map
       (fun (s, out_p) ->
         List.fold_left
           (fun (s, out_p) (r, pot) ->
             let pot' = instanciate (fst pot) arg_l env in
-            s, StrMap.add r (try Lit.Add [StrMap.find r out_p ; pot'] with Not_found -> pot') out_p)
+            s, StrMap.add r (try Lit.add (StrMap.find r out_p) pot' with Not_found -> pot') out_p)
           (s, out_p) pot_l)
       out
   | S.If (t1, t2, t3) ->
@@ -133,7 +151,7 @@ let rec verify_t env t s_pot_l out =
   | S.MatchList (l, t_nil, x, xs, t_cons) ->
     let out_nil = verify_t env t_nil s_pot_l out in
     let S.TList (ls, mty_x, r) = Printf.printf "DEBUG AQUI !!!!\n\n";StrMap.find l env in
-    let mty_xs = S.TList (Lit.Add [ls ; Lit.Lit (-1)], mty_x, r) in
+    let mty_xs = S.TList (Lit.add ls (Lit.lit (-1)), mty_x, r) in
     let env = StrMap.add x mty_x (StrMap.add xs mty_xs env) in
     let out_cons = verify_t env t_cons s_pot_l out in
     let Lit.Var vls = ls in
@@ -142,12 +160,12 @@ let rec verify_t env t s_pot_l out =
   | S.MatchTree (t, t_leaf, x, tl, tr, t_node) ->
     let out_leaf = verify_t env t_leaf s_pot_l out in
     let S.TTree (lsn, lsd, mty_x, r) = StrMap.find t env in
-    let mty_tf = S.TTree (Lit.RShift (Lit.Add [lsn ; Lit.Lit (-1)]), Lit.Add [lsd ; Lit.Lit (-1)], mty_x, r) in
+    let mty_tf = S.TTree (Lit.div (Lit.add lsn (Lit.lit (-1))) (Lit.lit 2), Lit.add lsd (Lit.lit (-1)), mty_x, r) in
     let env = StrMap.add x mty_x (StrMap.add tl mty_tf (StrMap.add tr mty_tf env)) in
     let out_node = verify_t env t_node s_pot_l out in
     let Lit.Var vlsn = lsn in
     let Lit.Var vlsd = lsd in
-    let out_leaf = List.map (fun (s, pot_l) -> StrMap.add vlsn (Lit.Lit 0) (StrMap.add vlsd (Lit.Lit 0) s), pot_l) out_leaf in
+    let out_leaf = List.map (fun (s, pot_l) -> StrMap.add vlsn (Lit.lit 0) (StrMap.add vlsd (Lit.lit 0) s), pot_l) out_leaf in
     List.rev_append out_leaf out_node
   | S.Let (x, t1, t2) ->
     let env' = StrMap.add x (S.get_type t1) env in
@@ -164,8 +182,7 @@ let rec verify_t env t s_pot_l out =
     let out = verify_t env t3 s_pot_l (verify_t env t2 s_pot_l (verify_t env t1 s_pot_l out)) in
     List.map
       (fun (s, out_p) ->
-        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
-        s, StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RPAIR)]) out_p)
+        s, StrMap.add r (try Lit.add (StrMap.find r out_p) (Lit.lit (cost_of RPAIR)) with Not_found -> Lit.lit (cost_of RPAIR)) out_p)
       out
   | S.Fst t1 ->
     verify_t env t1 s_pot_l out
@@ -182,8 +199,7 @@ let rec verify_t env t s_pot_l out =
     let out = verify_t env t3 s_pot_l (verify_t env t2 s_pot_l (verify_t env t1 s_pot_l out)) in
     List.map
       (fun (s, out_p) ->
-        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
-        s, StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RCONS)]) out_p)
+        s, StrMap.add r (try Lit.add (StrMap.find r out_p) (Lit.lit (cost_of RCONS)) with Not_found -> Lit.lit (cost_of RCONS)) out_p)
       out
   | S.Leaf -> out
   | S.Node (t1, t2, t3, t4) ->
@@ -192,8 +208,7 @@ let rec verify_t env t s_pot_l out =
     let out = verify_t env t4 s_pot_l (verify_t env t3 s_pot_l (verify_t env t2 s_pot_l (verify_t env t1 s_pot_l out))) in
     List.map
       (fun (s, out_p) ->
-        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
-        s, StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RNODE)]) out_p)
+        s, StrMap.add r (try Lit.add (StrMap.find r out_p) (Lit.lit (cost_of RNODE)) with Not_found -> Lit.lit (cost_of RNODE)) out_p)
       out
   | S.Ref (t1, t2) ->
     let S.TRef(_, _, r) = mty in
@@ -201,8 +216,7 @@ let rec verify_t env t s_pot_l out =
     let out = verify_t env t2 s_pot_l (verify_t env t1 s_pot_l out) in
     List.map
       (fun (s, out_p) ->
-        let pot_r = try StrMap.find r out_p with Not_found -> Lit.Unit in
-        s, StrMap.add r (Lit.Add [pot_r ; Lit.Lit (cost_of RREF)]) out_p)
+        s, StrMap.add r (try Lit.add (StrMap.find r out_p) (Lit.lit (cost_of RREF)) with Not_found -> Lit.lit (cost_of RREF)) out_p)
       out
   | S.Assign (t1, t2) -> verify_t env t2 s_pot_l (verify_t env t1 s_pot_l out)
   | S.Deref t1 -> verify_t env t1 s_pot_l out
@@ -240,7 +254,7 @@ and verify f arg_l t s_pot_l =
           (fun r f_pot_p ->
             try
               let out_p = StrMap.find r out_p_r in
-              Lit.Add [f_pot_p ; Lit.Mul [Lit.Lit (-1) ; out_p]]
+              Lit.sub f_pot_p out_p
             with Not_found -> f_pot_p)
           f_pot_p_r)
       f_pot out
@@ -248,8 +262,6 @@ and verify f arg_l t s_pot_l =
   List.iter (fun pot_l -> Printf.printf "compared1\n%s\n" (show_out pot_l)) cpot;
   let cpot = List.map (canonic) cpot in
   List.iter (fun pot_l -> Printf.printf "compared2\n%s\n" (show_out pot_l)) cpot;
-  let cpot = List.map (fun pot_l -> canonic (remove pot_l)) cpot in
-  List.iter (fun pot_l -> Printf.printf "compared3\n%s\n" (show_out pot_l)) cpot;
   List.for_all positive cpot
 
 let rec process_t s_pot_l t =

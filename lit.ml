@@ -42,3 +42,8 @@ let cost_of l =
     | Add (l1, l2) | Mul (l1, l2) -> 2 + loop l1 (loop l2 out)
     | Div (l1, l2) -> 10 + loop l1 (loop l2 out)
   in loop l 0
+
+let positive l =
+  match l with
+  | Lit i -> i >= 0
+  | _ -> false

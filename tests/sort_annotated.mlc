@@ -27,7 +27,9 @@ begin
   in
 
   let rec sort l out r =
-    { r: _length(l) * (_length(l) * rcons + rpair) -> 0 }
+    {
+      r: (_length(l) * rpair) + (_length(l) * (_length(l) + 1) * rcons) -> 0
+    }
     match l with
     | Nil -> out
     | Cons x xs -> (

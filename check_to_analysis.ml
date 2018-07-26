@@ -53,7 +53,7 @@ let rec apply_subs_pot s pot =
   |Some(fun_pot_l) -> Some(List.map (fun (r, (p1, p2)) -> (apply_subs_r s r, (p1, p2))) fun_pot_l)
 
 let rec apply_subs_t s sv t =
-  let pred_ls ls = Lit.sub ls (Lit.from_int 1) in
+  let pred_ls ls = Lit.sub ls (Lit.lit 1) in
   let te = S.get_term t in
   let mty = S.get_type t in
   let alpha_l = S.get_alpha_l t in

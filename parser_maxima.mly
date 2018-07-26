@@ -52,7 +52,12 @@ literal_const:
 
 literal_minus:
   | l = literal_const { l }
-  | MINUS l = literal_const { mul (lit (-1)) l }
+  | MINUS l = literal_const
+    {
+      match l with
+      | Lit i -> Lit ((-1) * i)
+      | _ -> mul (lit (-1)) l
+    }
 
 literal_div:
   | l_l = separated_nonempty_list(DIV, literal_minus)

@@ -22,7 +22,7 @@ begin
   in
 
   let rec to_tree l r =
-    { r: _length(l) * _length(l) * rnode -> 0 }
+    { r: (_length(l) + 1) * _length(l) * rnode -> 0 }
     match l with
     | Nil -> Leaf
     | Cons x xs -> (let out = to_tree xs r in insert_tree x out r)
@@ -41,8 +41,8 @@ begin
 
   let rec sort l rw ro =
     {
-      rw: _length(l) * _length(l) * rnode -> 0;
-      ro: 7 * _length(l) * rcons -> 0
+      rw: (_length(l) + 1) * _length(l) * rnode -> 0;
+      ro: _length(l) * rcons -> 0
     }
     to_list (to_tree l rw) Nil ro
   @
