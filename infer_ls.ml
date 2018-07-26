@@ -2,6 +2,8 @@ open Util
 
 module S = Ast
 
+exception Solved of Lit.t StrMap.t
+
 let rec merge_mty mty mty' =
   match mty, mty' with
   | S.TFun (mty_l, mty2, r), S.TFun (mty_l', mty2', _) -> S.TFun (List.map2 merge_mty mty_l mty_l', merge_mty mty2 mty2', r)
@@ -145,23 +147,29 @@ let resolve lit_nul coef =
     if lit_nul' = [] then
       sol'
     else if List.length lit_nul = List.length lit_nul' then
-      let sol_l =
-        List.fold_left
-          (fun out l ->
-            let c_l = cv l in
-            List.rev_append
-              (List.fold_left
-                (fun out c ->
-                  let sol' = List.fold_left (fun sol' c' -> if c' <> c then StrMap.add c' (Lit.lit 0) sol' else sol') sol' c_l in
-                  (loop lit_nul' sol')::out)
-                out c_l)
-              out)
-          [] lit_nul'
-      in
-      let sol_l = List.filter (fun sol -> StrMap.cardinal sol = StrSet.cardinal coef) sol_l in
-      try
-        list_min (fun sol sol' -> compare (cost_of_sol sol) (cost_of_sol sol')) sol_l
-      with Invalid_argument _ -> sol'
+      try begin
+        let sol_l =
+          List.fold_left
+            (fun out l ->
+              let c_l = cv l in
+              List.rev_append
+                (List.fold_left
+                  (fun out c ->
+                    let sol' = List.fold_left (fun sol' c' -> if c' <> c then StrMap.add c' (Lit.lit 0) sol' else sol') sol' c_l in
+                    let sol' = loop lit_nul' sol' in
+                    if cost_of_sol sol' = 0 && StrMap.cardinal sol' = StrSet.cardinal coef then
+                      raise (Solved sol')
+                    else
+                      sol'::out)
+                  out c_l)
+                out)
+            [] lit_nul'
+        in
+        let sol_l = List.filter (fun sol -> StrMap.cardinal sol = StrSet.cardinal coef) sol_l in
+        try
+          list_min (fun sol sol' -> compare (cost_of_sol sol) (cost_of_sol sol')) sol_l
+        with Invalid_argument _ -> sol'
+      end with Solved sol -> sol
     else
       loop lit_nul' sol'
   in loop (List.map Maxima.canonic lit_nul) StrMap.empty
