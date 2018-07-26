@@ -51,7 +51,7 @@ let () =
     let prog = Ls_to_simpl.process prog in
     Printf.printf "(********** RCAML SIMPL **********)\n%s\n\n" (Simpl.show_typed_term prog);
 
-    let prog = Verify_annot.process prog in
+(*    let prog = Verify_annot.process prog in
     Printf.printf "(********** RCAML VERIFY **********)\n%s\n\n" (Simpl.show_typed_term prog);
 
 (*    assert false;*)
@@ -62,7 +62,7 @@ let () =
     let bound = Check_to_analysis.process prog in
     Printf.printf "(********** RCAML REGIONS BYTES BOUND **********)\n";
     Printf.printf "Bound: %d bytes\n" bound;
-
+*)
     ()
 
   with

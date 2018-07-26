@@ -1,0 +1,69 @@
+(*
+  Nicolas ASSOUAD
+
+  Test function for memory consumption analysis
+  Sort with free of memory
+
+*)
+
+let rgn0 = newrgn () in
+let rgn1 = newrgn () in
+begin
+  aliasrgn rgn0 in
+  aliasrgn rgn1 in
+
+  let rec insert_tree i t r =
+    { r: (_depth(t) + 1) * rnode -> 0 }
+    match t with
+    | Leaf -> Node i Leaf Leaf @ r
+    | Node x lt rt -> if i < x then Node x (insert_tree i lt r) rt @ r else Node x lt (insert_tree i rt r) @ r
+  @
+    rgn1
+  in
+
+  let rec to_tree l r =
+    { r: _length(l) * _length(l) * rnode -> 0 }
+    match l with
+    | Nil -> Leaf
+    | Cons x xs -> (let out = to_tree xs r in insert_tree x out r)
+  @
+    rgn1
+  in
+
+  let rec to_list t l r =
+    { r: _node(t) * rcons -> 0 }
+    match t with
+    | Leaf -> l
+    | Node x lt rt ->  to_list lt (Cons x (to_list rt l r) @ r) r
+  @
+    rgn1
+  in
+
+  let rec sort l rw ro =
+    {
+      rw: _length(l) * _length(l) * rnode -> 0;
+      ro: 7 * _length(l) * rcons -> 0
+    }
+    to_list (to_tree l rw) Nil ro
+  @
+    rgn1
+  in
+
+  let l1 = [1 ; 3 ; 0 ; 2] @ rgn0 in
+  let rgnw = newrgn () in (
+    (aliasrgn rgnw in let l1' = sort l1 rgnw rgn0 in ());
+    (freergn rgnw);
+    ())
+
+(*
+  begin
+    let rgnw = newrgn () in (
+    (aliasrgn rgnw in let l1' = sort l1 Nil rgnw rgn0 in ());
+    (freergn rgnw);
+    let rgnw = newrgn () in (
+    (aliasrgn rgnw in let l1'' = sort l1 Nil rgnw rgn0 in ());
+    (freergn rgnw);
+    ()))
+  end
+*)
+end

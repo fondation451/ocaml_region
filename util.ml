@@ -16,6 +16,9 @@ let strset_str strset =
 let strmap_str strmap val_str =
   "[" ^ (StrMap.fold (fun a v out -> out ^ (Printf.sprintf "%s : %s, \n" a (val_str v))) strmap "") ^ "]"
 
+let list_str l val_str =
+  "[" ^ (List.fold_left (fun out v -> out ^ (Printf.sprintf "%s, " (val_str v))) "" l) ^ "]"
+
 let mk_id = let cpt = ref (-1) in fun () -> incr cpt; !cpt
 
 let mk_var =
@@ -44,6 +47,16 @@ let hash_s s =
     out := !out + (Char.code s.[i])
   done;
   !out
+
+let list_min f l =
+  match l with
+  | [] -> raise (Invalid_argument "Util.list_min: empty list !")
+  | h::t ->
+    let rec loop l out =
+      match l with
+      | [] -> out
+      | h::t -> if f out h <= 0 then loop t out else loop t h
+    in loop t h
 
 type ressource =
   |RPAIR
