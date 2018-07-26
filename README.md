@@ -8,6 +8,11 @@ opam install ppx_deriving
 opam install depext
 opam install menhir
 opam install ocplib-simplex
+
+# Need also Maxima to work
+brew install maxima # Mac OS
+sudo apt-get install maxima # Ubuntu
+
 ```
 
 # Use
